@@ -1,9 +1,14 @@
 import AVFoundation
 import Foundation
+import Combine
 
 class AudioRecorder: NSObject {
     private var audioRecorder: AVAudioRecorder?
     private var recordingURL: URL?
+    private var levelTimer: Timer?
+    
+    // Published audio level for UI updates
+    let audioLevelPublisher = PassthroughSubject<Float, Never>()
     
     override init() {
         super.init()
@@ -44,11 +49,16 @@ class AudioRecorder: NSObject {
         
         audioRecorder = try AVAudioRecorder(url: url, settings: settings)
         audioRecorder?.delegate = self
+        audioRecorder?.isMeteringEnabled = true  // Enable metering for audio levels
         audioRecorder?.record()
+        
+        // Start level monitoring
+        startLevelMonitoring()
     }
     
     @discardableResult
     func stopRecording() -> URL? {
+        stopLevelMonitoring()
         audioRecorder?.stop()
         let url = recordingURL
         audioRecorder = nil
@@ -57,6 +67,35 @@ class AudioRecorder: NSObject {
     
     var isRecording: Bool {
         audioRecorder?.isRecording ?? false
+    }
+    
+    // MARK: - Audio Level Monitoring
+    
+    private func startLevelMonitoring() {
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.updateAudioLevel()
+        }
+    }
+    
+    private func stopLevelMonitoring() {
+        levelTimer?.invalidate()
+        levelTimer = nil
+    }
+    
+    private func updateAudioLevel() {
+        guard let recorder = audioRecorder, recorder.isRecording else { return }
+        
+        recorder.updateMeters()
+        
+        // Get average power in decibels (-160 to 0)
+        let averagePower = recorder.averagePower(forChannel: 0)
+        
+        // Normalize to 0-1 range
+        // -50 dB is roughly silence, 0 dB is max
+        let minDb: Float = -50
+        let normalizedLevel = max(0, min(1, (averagePower - minDb) / (-minDb)))
+        
+        audioLevelPublisher.send(normalizedLevel)
     }
 }
 

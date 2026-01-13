@@ -8,7 +8,11 @@ class OpenAIService {
     }
     
     // MARK: - Whisper Transcription
-    func transcribe(audioURL: URL) async throws -> String {
+    /// Transcribes audio to text
+    /// - Parameters:
+    ///   - audioURL: URL to the audio file
+    ///   - language: ISO-639-1 language code (e.g. "ru", "en") or nil for auto-detect
+    func transcribe(audioURL: URL, language: String? = nil) async throws -> String {
         guard let apiKey = apiKey else {
             throw OpenAIError.noAPIKey
         }
@@ -28,6 +32,13 @@ class OpenAIService {
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n".data(using: .utf8)!)
         body.append("whisper-1\r\n".data(using: .utf8)!)
+        
+        // Add language parameter if specified (prevents unwanted translation)
+        if let language = language {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(language)\r\n".data(using: .utf8)!)
+        }
         
         // Add audio file
         let audioData = try Data(contentsOf: audioURL)
@@ -97,6 +108,59 @@ class OpenAIService {
         
         let chatResponse = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
         return chatResponse.choices.first?.message.content ?? text
+    }
+    
+    // MARK: - Chat with History
+    func chat(
+        userMessage: String,
+        history: [(role: String, content: String)],
+        systemPrompt: String,
+        model: String
+    ) async throws -> String {
+        guard let apiKey = apiKey else {
+            throw OpenAIError.noAPIKey
+        }
+        
+        let url = URL(string: "\(baseURL)/chat/completions")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build messages array
+        var messages: [ChatMessage] = [ChatMessage(role: "system", content: systemPrompt)]
+        
+        // Add conversation history
+        for msg in history {
+            messages.append(ChatMessage(role: msg.role, content: msg.content))
+        }
+        
+        // Add current user message
+        messages.append(ChatMessage(role: "user", content: userMessage))
+        
+        let chatRequest = ChatCompletionRequest(
+            model: model,
+            messages: messages,
+            temperature: 0.7
+        )
+        
+        request.httpBody = try JSONEncoder().encode(chatRequest)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIError.invalidResponse
+        }
+        
+        if httpResponse.statusCode != 200 {
+            if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
+                throw OpenAIError.apiError(errorResponse.error.message)
+            }
+            throw OpenAIError.httpError(httpResponse.statusCode)
+        }
+        
+        let chatResponse = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+        return chatResponse.choices.first?.message.content ?? ""
     }
 }
 

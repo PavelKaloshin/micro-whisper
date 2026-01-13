@@ -1,40 +1,222 @@
 import Cocoa
+import SwiftUI
 import HotKey
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private var hotKey: HotKey?
+    static var shared: AppDelegate?
     
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        setupHotKey()
+    private var hotKey: HotKey?
+    private var statusItem: NSStatusItem?
+    private var popover: NSPopover?
+    private var settingsWindow: NSWindow?
+    private var globalEventMonitor: Any?
+    private var lastGlobeKeyTime: Date?
+    
+    override init() {
+        super.init()
+        AppDelegate.shared = self
     }
     
-    func setupHotKey() {
-        // Default hotkey: Cmd + Shift + 9
-        hotKey = HotKey(key: .nine, modifiers: [.command, .shift])
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        debugLog("applicationDidFinishLaunching called")
+        setupStatusBar()
+        setupHotKey()
+        debugLog("Setup completed, statusItem = \(String(describing: statusItem))")
+    }
+    
+    private func debugLog(_ message: String) {
+        let debugPath = "/tmp/whisper_debug.txt"
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] \(message)\n"
         
-        hotKey?.keyDownHandler = { [weak self] in
-            self?.toggleRecording()
+        if let handle = FileHandle(forWritingAtPath: debugPath) {
+            handle.seekToEndOfFile()
+            handle.write(line.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            try? line.write(toFile: debugPath, atomically: true, encoding: .utf8)
         }
     }
     
-    private func toggleRecording() {
+    func setupStatusBar() {
+        debugLog("setupStatusBar starting")
+        guard statusItem == nil else { 
+            debugLog("statusItem already exists")
+            return 
+        }
+        
+        // Create status item with menu (more reliable than popover)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        debugLog("created statusItem: \(item)")
+        
+        if let button = item.button {
+            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Whisper")
+            button.image?.isTemplate = true
+            debugLog("button configured with image")
+        }
+        
+        // Create menu
+        let menu = NSMenu()
+        
+        let statusMenuItem = NSMenuItem(title: "Ready", action: nil, keyEquivalent: "")
+        statusMenuItem.isEnabled = false
+        menu.addItem(statusMenuItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        let recordItem = NSMenuItem(title: "Start Recording", action: #selector(toggleRecordingMenu), keyEquivalent: "")
+        recordItem.target = self
+        menu.addItem(recordItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        let quitItem = NSMenuItem(title: "Quit Whisper", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(quitItem)
+        
+        item.menu = menu
+        statusItem = item
+        debugLog("setupStatusBar completed with menu")
+    }
+    
+    @objc func toggleRecordingMenu() {
+        Task { @MainActor in
+            await Self.toggleRecording()
+        }
+    }
+    
+    @objc func togglePopover() {
+        guard let statusItem = statusItem else { return }
+        
+        // Lazy create popover
+        if popover == nil {
+            let pop = NSPopover()
+            pop.contentSize = NSSize(width: 300, height: 400)
+            pop.behavior = .transient
+            pop.contentViewController = NSHostingController(rootView: 
+                MenuBarView().environmentObject(AppState.shared)
+            )
+            popover = pop
+        }
+        
+        guard let popover = popover, let button = statusItem.button else { return }
+        
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+    }
+    
+    @objc func openSettings() {
+        if settingsWindow == nil {
+            let settingsView = SettingsView().environmentObject(AppState.shared)
+            let hostingController = NSHostingController(rootView: settingsView)
+            
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = "Whisper Settings"
+            window.styleMask = [.titled, .closable]
+            window.setContentSize(NSSize(width: 500, height: 450))
+            window.center()
+            
+            settingsWindow = window
+        }
+        
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    func setupHotKey() {
+        // Use Globe key (Fn key) - double press to activate
+        // Globe key has keyCode 63 (kVK_Function)
+        setupGlobeKeyMonitor()
+        
+        // Keep Cmd+Shift+9 as fallback
+        hotKey = HotKey(key: .nine, modifiers: [.command, .shift])
+        hotKey?.keyDownHandler = {
+            Task { @MainActor in
+                await Self.toggleRecording()
+            }
+        }
+    }
+    
+    private func setupGlobeKeyMonitor() {
+        // Monitor for Globe/Fn key (keyCode 63)
+        // We use flagsChanged event since Globe key is a modifier
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+            self?.handleGlobeKey(event: event)
+        }
+        
+        // Also add local monitor for when app is focused
+        NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+            self?.handleGlobeKey(event: event)
+            return event
+        }
+    }
+    
+    private func handleGlobeKey(event: NSEvent) {
+        // Globe key detection: keyCode 63 or check for .function modifier
+        // Double-press detection for activation
+        
+        let isGlobeKey = event.keyCode == 63 || event.modifierFlags.contains(.function)
+        
+        guard isGlobeKey && event.type == .flagsChanged else { return }
+        
+        let now = Date()
+        
+        if let lastTime = lastGlobeKeyTime {
+            let timeDiff = now.timeIntervalSince(lastTime)
+            
+            // Double press within 0.4 seconds
+            if timeDiff < 0.4 && timeDiff > 0.05 {
+                lastGlobeKeyTime = nil
+                Task { @MainActor in
+                    await Self.toggleRecording()
+                }
+                return
+            }
+        }
+        
+        lastGlobeKeyTime = now
+    }
+    
+    @MainActor
+    private static func toggleRecording() async {
         let appState = AppState.shared
         
         if appState.isRecording {
-            // Stop recording and process
-            Task {
-                await appState.stopRecordingAndProcess()
-            }
+            await appState.stopRecordingAndProcess()
         } else {
-            // Start recording
             appState.startRecording()
+        }
+    }
+    
+    @MainActor
+    func updateStatusIcon(isRecording: Bool) {
+        guard let button = statusItem?.button else { return }
+        button.image = NSImage(
+            systemSymbolName: isRecording ? "mic.fill" : "mic",
+            accessibilityDescription: "Whisper"
+        )
+        // Tint red when recording
+        if isRecording {
+            button.contentTintColor = .red
+        } else {
+            button.contentTintColor = nil
         }
     }
     
     func updateHotKey(key: Key, modifiers: NSEvent.ModifierFlags) {
         hotKey = HotKey(key: key, modifiers: modifiers)
-        hotKey?.keyDownHandler = { [weak self] in
-            self?.toggleRecording()
+        hotKey?.keyDownHandler = {
+            Task { @MainActor in
+                await Self.toggleRecording()
+            }
         }
     }
 }

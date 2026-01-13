@@ -65,7 +65,7 @@ struct MenuBarView: View {
             }
             
             // Settings
-            SettingsLink {
+            Button(action: openSettings) {
                 HStack {
                     Image(systemName: "gear")
                     Text("Settings...")
@@ -115,6 +115,8 @@ struct MenuBarView: View {
             return .red
         case .transcribing, .processing:
             return .orange
+        case .showingResult:
+            return .purple
         case .error:
             return .red
         }
@@ -134,6 +136,11 @@ struct MenuBarView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(appState.lastProcessedText, forType: .string)
+    }
+    
+    private func openSettings() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 

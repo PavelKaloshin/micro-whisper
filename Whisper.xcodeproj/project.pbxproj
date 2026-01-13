@@ -17,6 +17,8 @@
 		A1000008 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* MenuBarView.swift */; };
 		A1000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* SettingsView.swift */; };
 		A100000A /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = A300000A /* HotKey */; };
+		A100000B /* RecordingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* RecordingWindow.swift */; };
+		A100000C /* LaunchAtLoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D /* LaunchAtLoginService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +34,8 @@
 		A2000009 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A200000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A200000B /* Whisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Whisper.entitlements; sourceTree = "<group>"; };
+		A200000C /* RecordingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingWindow.swift; sourceTree = "<group>"; };
+		A200000D /* LaunchAtLoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,7 +50,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		A5000000 /* Root */ = {
+		A5000000 = {
 			isa = PBXGroup;
 			children = (
 				A5000001 /* Whisper */,
@@ -83,6 +87,7 @@
 				A2000005 /* OpenAIService.swift */,
 				A2000006 /* KeychainService.swift */,
 				A2000007 /* PasteService.swift */,
+				A200000D /* LaunchAtLoginService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -92,6 +97,7 @@
 			children = (
 				A2000008 /* MenuBarView.swift */,
 				A2000009 /* SettingsView.swift */,
+				A200000C /* RecordingWindow.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -150,7 +156,7 @@
 				en,
 				Base,
 			);
-			mainGroup = A5000000 /* Root */;
+			mainGroup = A5000000;
 			packageReferences = (
 				A3000001 /* XCRemoteSwiftPackageReference "HotKey" */,
 			);
@@ -187,6 +193,8 @@
 				A1000007 /* PasteService.swift in Sources */,
 				A1000008 /* MenuBarView.swift in Sources */,
 				A1000009 /* SettingsView.swift in Sources */,
+				A100000B /* RecordingWindow.swift in Sources */,
+				A100000C /* LaunchAtLoginService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -329,6 +337,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.whisper.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -357,6 +366,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.whisper.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -409,4 +419,3 @@
 	};
 	rootObject = A8000001 /* Project object */;
 }
-

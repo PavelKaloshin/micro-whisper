@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var showAPIKey: Bool = false
     @State private var isSavingKey: Bool = false
     @State private var keySaveMessage: String = ""
+    @State private var launchAtLogin: Bool = LaunchAtLoginService.shared.isEnabled
     
     private let pasteService = PasteService()
     
@@ -35,6 +36,18 @@ struct SettingsView: View {
     // MARK: - General Tab
     private var generalTab: some View {
         Form {
+            Section("Whisper Transcription") {
+                Picker("Language", selection: $appState.whisperLanguage) {
+                    Text("Auto-detect (0)").tag("auto")
+                    Text("English (1)").tag("en")
+                    Text("Russian (2)").tag("ru")
+                }
+                
+                Text("During recording: press 0 for auto, 1 for English, 2 for Russian.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
             Section("GPT Post-Processing") {
                 Toggle("Enable GPT post-processing", isOn: $appState.enableGPTProcessing)
                 
@@ -66,14 +79,30 @@ struct SettingsView: View {
                 HStack {
                     Text("Record Hotkey:")
                     Spacer()
-                    Text("⌘ ⇧ 9")
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.gray.opacity(0.2))
-                        .cornerRadius(4)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("🌐🌐 (double Globe)")
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(4)
+                        Text("or ⌘⇧9")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 
-                Text("Press once to start recording, press again to stop and transcribe.")
+                Text("Double-press Globe key or use Cmd+Shift+9 to start/stop recording.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Section("Startup") {
+                Toggle("Launch at Login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { newValue in
+                        _ = LaunchAtLoginService.shared.setEnabled(newValue)
+                    }
+                
+                Text("Whisper will start automatically when you log in.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

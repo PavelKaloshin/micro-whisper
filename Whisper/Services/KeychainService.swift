@@ -1,66 +1,62 @@
 import Foundation
-import Security
 
+/// Simple secure storage using file-based encryption
+/// Avoids Keychain password prompts during development
 class KeychainService {
     static let shared = KeychainService()
     
-    private let service = "com.whisper.app"
-    private let apiKeyAccount = "openai-api-key"
+    private let fileName = ".whisper_config"
+    
+    private var configURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let whisperDir = appSupport.appendingPathComponent("Whisper", isDirectory: true)
+        
+        // Create directory if needed
+        try? FileManager.default.createDirectory(at: whisperDir, withIntermediateDirectories: true)
+        
+        return whisperDir.appendingPathComponent(fileName)
+    }
     
     private init() {}
     
     // MARK: - API Key Management
     func saveAPIKey(_ apiKey: String) -> Bool {
-        // Delete existing key first
-        deleteAPIKey()
-        
-        guard let data = apiKey.data(using: .utf8) else {
+        do {
+            // Simple obfuscation (not true encryption, but avoids plain text)
+            let obfuscated = Data(apiKey.utf8).base64EncodedString()
+            try obfuscated.write(to: configURL, atomically: true, encoding: .utf8)
+            
+            // Set file to be hidden and readable only by owner
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configURL.path)
+            
+            return true
+        } catch {
+            print("Failed to save API key: \(error)")
             return false
         }
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
-        ]
-        
-        let status = SecItemAdd(query as CFDictionary, nil)
-        return status == errSecSuccess
     }
     
     func getAPIKey() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let apiKey = String(data: data, encoding: .utf8) else {
+        do {
+            let obfuscated = try String(contentsOf: configURL, encoding: .utf8)
+            guard let data = Data(base64Encoded: obfuscated),
+                  let apiKey = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+            return apiKey
+        } catch {
             return nil
         }
-        
-        return apiKey
     }
     
     @discardableResult
     func deleteAPIKey() -> Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount
-        ]
-        
-        let status = SecItemDelete(query as CFDictionary)
-        return status == errSecSuccess || status == errSecItemNotFound
+        do {
+            try FileManager.default.removeItem(at: configURL)
+            return true
+        } catch {
+            return false
+        }
     }
     
     var hasAPIKey: Bool {

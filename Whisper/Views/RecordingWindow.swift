@@ -51,11 +51,13 @@ struct MarkdownWebView: NSViewRepresentable {
                 strong, b { font-weight: 600; }
                 em, i { font-style: italic; }
                 code {
-                    font-family: 'SF Mono', Menlo, monospace;
+                    font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
                     font-size: 12px;
                     background: \(codeBg);
                     padding: 2px 6px;
                     border-radius: 4px;
+                    white-space: pre-wrap;
+                    word-break: break-word;
                 }
                 pre {
                     background: \(codeBg);
@@ -63,8 +65,17 @@ struct MarkdownWebView: NSViewRepresentable {
                     border-radius: 8px;
                     overflow-x: auto;
                     margin: 8px 0;
+                    white-space: pre;
+                    font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+                    font-size: 12px;
+                    line-height: 1.4;
                 }
-                pre code { background: none; padding: 0; }
+                pre code { 
+                    background: none; 
+                    padding: 0;
+                    white-space: pre;
+                    display: block;
+                }
                 a { color: \(linkColor); text-decoration: none; }
                 table {
                     border-collapse: collapse;
@@ -106,10 +117,16 @@ struct MarkdownWebView: NSViewRepresentable {
         html = html.replacingOccurrences(of: "<", with: "&lt;")
         html = html.replacingOccurrences(of: ">", with: "&gt;")
         
-        // Code blocks (``` ... ```)
-        let codeBlockPattern = "```[\\w]*\\n([\\s\\S]*?)```"
+        // Code blocks (```language ... ``` or ``` ... ```)
+        // Handle with optional language and optional newline
+        let codeBlockPattern = "```(\\w*)\\n?([\\s\\S]*?)```"
         if let regex = try? NSRegularExpression(pattern: codeBlockPattern, options: []) {
-            html = regex.stringByReplacingMatches(in: html, options: [], range: NSRange(html.startIndex..., in: html), withTemplate: "<pre><code>$1</code></pre>")
+            html = regex.stringByReplacingMatches(in: html, options: [], range: NSRange(html.startIndex..., in: html), withTemplate: "<pre><code>$2</code></pre>")
+        }
+        
+        // If no code blocks but looks like code (indentation, common patterns), wrap in pre
+        if !html.contains("<pre>") && looksLikeCode(html) {
+            html = "<pre><code>\(html)</code></pre>"
         }
         
         // Inline code (`...`)
@@ -210,6 +227,36 @@ struct MarkdownWebView: NSViewRepresentable {
         
         return result.joined(separator: "\n")
     }
+    
+    /// Detect if text looks like code (for auto-formatting)
+    private func looksLikeCode(_ text: String) -> Bool {
+        let codePatterns = [
+            "^(def |class |import |from |if |for |while |return |async |await )",  // Python
+            "^(function |const |let |var |import |export |if |for |while |return )",  // JS/TS
+            "^(func |struct |class |import |if |for |while |return |guard |let |var )",  // Swift
+            "^(public |private |class |interface |import |if |for |while |return )",  // Java
+            "\\{|\\}|\\(\\)|=>|->|::|&&|\\|\\|",  // Common code symbols
+            "^\\s{2,}\\S",  // Indented lines
+            "\\w+\\s*=\\s*\\w+",  // Assignment
+            "\\w+\\(.*\\)",  // Function calls
+        ]
+        
+        let lines = text.components(separatedBy: "\n")
+        var codeLineCount = 0
+        
+        for line in lines {
+            for pattern in codePatterns {
+                if let regex = try? NSRegularExpression(pattern: pattern, options: .anchorsMatchLines),
+                   regex.firstMatch(in: line, options: [], range: NSRange(line.startIndex..., in: line)) != nil {
+                    codeLineCount += 1
+                    break
+                }
+            }
+        }
+        
+        // If more than 50% of lines look like code, treat as code
+        return lines.count > 0 && Double(codeLineCount) / Double(lines.count) > 0.5
+    }
 }
 
 struct RecordingOverlayView: View {
@@ -256,33 +303,120 @@ struct RecordingOverlayView: View {
             // Controls during recording
             if appState.isRecording {
                 VStack(spacing: 8) {
-                    // Language selector
-                    HStack(spacing: 8) {
-                        LanguageButton(key: "0", label: "Auto", code: "auto", currentLanguage: appState.whisperLanguage)
-                        LanguageButton(key: "1", label: "EN", code: "en", currentLanguage: appState.whisperLanguage)
-                        LanguageButton(key: "2", label: "RU", code: "ru", currentLanguage: appState.whisperLanguage)
+                    // Section 1: Language
+                    VStack(spacing: 4) {
+                        Text("LANGUAGE")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(.secondary.opacity(0.7))
+                        HStack(spacing: 5) {
+                            LanguageButton(key: "0", label: "Auto", code: "auto", currentLanguage: appState.whisperLanguage)
+                            LanguageButton(key: "1", label: "EN", code: "en", currentLanguage: appState.whisperLanguage)
+                            LanguageButton(key: "2", label: "RU", code: "ru", currentLanguage: appState.whisperLanguage)
+                        }
                     }
                     
-                    // Mode selector
-                    HStack(spacing: 8) {
-                        ModeButton(key: "", label: "📝 Transcribe", mode: .transcribe, currentMode: appState.recordingMode)
-                        ModeButton(key: "3", label: "🤖 Ask GPT", mode: .askGPT, currentMode: appState.recordingMode)
+                    Divider().opacity(0.3)
+                    
+                    // Section 2: Mode
+                    VStack(spacing: 4) {
+                        Text("MODE")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(.secondary.opacity(0.7))
+                        HStack(spacing: 4) {
+                            ForEach([RecordingMode.transcribe, .askGPT, .respond], id: \.self) { mode in
+                                RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
+                            }
+                        }
+                        HStack(spacing: 4) {
+                            ForEach([RecordingMode.code, .process], id: \.self) { mode in
+                                RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
+                            }
+                        }
+                    }
+                    
+                    // Section 3: Mode-specific options
+                    if appState.recordingMode == .transcribe {
+                        Divider().opacity(0.3)
+                        VStack(spacing: 4) {
+                            Text("FORMAT")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(.secondary.opacity(0.7))
+                            HStack(spacing: 4) {
+                                ForEach(FormattingMode.allCases, id: \.self) { mode in
+                                    FormattingButton(mode: mode, currentMode: appState.formattingMode)
+                                }
+                            }
+                        }
+                    }
+                    
+                    if appState.recordingMode == .code {
+                        Divider().opacity(0.3)
+                        VStack(spacing: 4) {
+                            Text("LANGUAGE")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(.secondary.opacity(0.7))
+                            HStack(spacing: 4) {
+                                ForEach(CodeLanguageMode.allCases, id: \.self) { mode in
+                                    CodeLanguageButton(mode: mode, currentMode: appState.codeLanguageMode)
+                                }
+                            }
+                        }
+                    }
+                    
+                    Divider().opacity(0.3)
+                    
+                    // Section 4: Options
+                    VStack(spacing: 4) {
+                        Text("OPTIONS")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(.secondary.opacity(0.7))
+                        
+                        HStack(spacing: 8) {
+                            // Clipboard toggle (for modes that use it)
+                            if appState.recordingMode.usesClipboard {
+                                ClipboardIndicator(
+                                    content: appState.clipboardContent,
+                                    useClipboard: $appState.useClipboardContext
+                                )
+                            }
+                            
+                            // Output mode toggle (paste vs chat)
+                            if appState.recordingMode != .askGPT {
+                                OutputModeToggle(autoPaste: $appState.autoPasteResult)
+                            }
+                        }
                     }
                     
                     Text("Esc/Q — cancel")
-                        .font(.system(size: 10))
+                        .font(.system(size: 9))
                         .foregroundColor(.secondary)
+                        .padding(.top, 2)
                 }
                 .padding(.top, 4)
             }
         }
-        .padding(28)
-        .frame(width: 300, height: 360)
+        .padding(20)
+        .frame(width: 360, height: 480)
         .background(
             RoundedRectangle(cornerRadius: 24)
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.3), radius: 30, x: 0, y: 15)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(
+                    outputBorderColor,
+                    lineWidth: appState.recordingMode == .askGPT ? 0 : 3
+                )
+        )
+    }
+    
+    /// Border color based on output mode
+    private var outputBorderColor: Color {
+        if appState.recordingMode == .askGPT {
+            return .clear // Ask mode always shows in chat, no border needed
+        }
+        return appState.autoPasteResult ? .orange : .cyan
     }
     
     private var iconName: String {
@@ -468,32 +602,166 @@ struct LanguageButton: View {
     }
 }
 
-struct ModeButton: View {
-    let key: String
-    let label: String
+struct RecordingModeButton: View {
     let mode: RecordingMode
     let currentMode: RecordingMode
+    @State private var isHovering = false
     
     var isSelected: Bool {
         currentMode == mode
     }
     
     var body: some View {
-        HStack(spacing: 4) {
-            if !key.isEmpty {
-                Text(key)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary)
-            }
-            Text(label)
-                .font(.system(size: 12, weight: isSelected ? .bold : .regular))
+        HStack(spacing: 3) {
+            Text(mode.hotkey)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary)
+            Text(mode.displayName)
+                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
                 .foregroundColor(isSelected ? .white : .secondary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? Color.purple : Color.gray.opacity(0.3))
+            RoundedRectangle(cornerRadius: 5)
+                .fill(isSelected ? Color.purple : Color.gray.opacity(0.25))
+        )
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .popover(isPresented: $isHovering, arrowEdge: .bottom) {
+            Text(mode.tooltip)
+                .font(.system(size: 11))
+                .padding(8)
+                .frame(maxWidth: 200)
+        }
+    }
+}
+
+struct FormattingButton: View {
+    let mode: FormattingMode
+    let currentMode: FormattingMode
+    @State private var isHovering = false
+    
+    var isSelected: Bool {
+        currentMode == mode
+    }
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(mode.hotkey)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary)
+            Text(mode.displayName)
+                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? .white : .secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(isSelected ? Color.blue : Color.gray.opacity(0.25))
+        )
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .popover(isPresented: $isHovering, arrowEdge: .bottom) {
+            Text(mode.tooltip)
+                .font(.system(size: 11))
+                .padding(8)
+                .frame(maxWidth: 200)
+        }
+    }
+}
+
+struct CodeLanguageButton: View {
+    let mode: CodeLanguageMode
+    let currentMode: CodeLanguageMode
+    
+    var isSelected: Bool {
+        currentMode == mode
+    }
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(mode.hotkey)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(isSelected ? .white.opacity(0.7) : .secondary)
+            Text(mode.displayName)
+                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? .white : .secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(isSelected ? Color.green : Color.gray.opacity(0.25))
+        )
+    }
+}
+
+struct ClipboardIndicator: View {
+    let content: AppState.ClipboardContent
+    @Binding var useClipboard: Bool
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            // Toggle for using clipboard
+            Button(action: { useClipboard.toggle() }) {
+                Image(systemName: useClipboard ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 12))
+                    .foregroundColor(useClipboard ? .green : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Toggle clipboard context (V)")
+            
+            // Clipboard status
+            HStack(spacing: 4) {
+                Image(systemName: content.hasContent ? "doc.on.clipboard.fill" : "doc.on.clipboard")
+                    .font(.system(size: 10))
+                    .foregroundColor(content.hasContent ? .green : .secondary)
+                
+                Text(content.preview)
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: 150, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.gray.opacity(0.2))
+        )
+    }
+}
+
+struct OutputModeToggle: View {
+    @Binding var autoPaste: Bool
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: { autoPaste.toggle() }) {
+                HStack(spacing: 4) {
+                    Text("O")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Image(systemName: autoPaste ? "doc.on.doc" : "bubble.left.and.bubble.right")
+                        .font(.system(size: 10))
+                    Text(autoPaste ? "Paste" : "Chat")
+                        .font(.system(size: 10))
+                }
+                .foregroundColor(autoPaste ? .orange : .cyan)
+            }
+            .buttonStyle(.plain)
+            .help("O: Toggle output mode - Paste to app or show in chat")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.gray.opacity(0.2))
         )
     }
 }
@@ -818,12 +1086,98 @@ class RecordingWindowController: NSObject {
                     return nil
                 }
                 
-                // Mode selection: 3 = Ask GPT
-                if event.keyCode == 20 { // 3
+                // Mode selection: T=Transcribe, A=Ask, R=Respond, C=Code, P=Process
+                if event.keyCode == 17 { // T
+                    Task { @MainActor in
+                        AppState.shared.recordingMode = .transcribe
+                    }
+                    return nil
+                }
+                if event.keyCode == 0 { // A
                     Task { @MainActor in
                         AppState.shared.recordingMode = .askGPT
                     }
                     return nil
+                }
+                if event.keyCode == 15 { // R
+                    Task { @MainActor in
+                        AppState.shared.recordingMode = .respond
+                        AppState.shared.refreshClipboard()
+                    }
+                    return nil
+                }
+                if event.keyCode == 8 { // C
+                    Task { @MainActor in
+                        AppState.shared.recordingMode = .code
+                    }
+                    return nil
+                }
+                if event.keyCode == 35 { // P
+                    Task { @MainActor in
+                        AppState.shared.recordingMode = .process
+                        AppState.shared.refreshClipboard()
+                    }
+                    return nil
+                }
+                
+                // V = Toggle clipboard usage
+                if event.keyCode == 9 { // V
+                    Task { @MainActor in
+                        AppState.shared.useClipboardContext.toggle()
+                    }
+                    return nil
+                }
+                
+                // O = Toggle output mode (paste vs chat)
+                if event.keyCode == 31 { // O
+                    Task { @MainActor in
+                        AppState.shared.autoPasteResult.toggle()
+                    }
+                    return nil
+                }
+                
+                // Formatting mode selection (only in transcribe mode): D = Default, N = Notion, S = Slack
+                if AppState.shared.recordingMode == .transcribe {
+                    if event.keyCode == 2 { // D
+                        Task { @MainActor in
+                            AppState.shared.formattingMode = .standard
+                        }
+                        return nil
+                    }
+                    if event.keyCode == 45 { // N
+                        Task { @MainActor in
+                            AppState.shared.formattingMode = .notion
+                        }
+                        return nil
+                    }
+                    if event.keyCode == 1 { // S
+                        Task { @MainActor in
+                            AppState.shared.formattingMode = .slack
+                        }
+                        return nil
+                    }
+                }
+                
+                // Code language selection (only in code mode): U = Auto, Y = Python, B = Bash
+                if AppState.shared.recordingMode == .code {
+                    if event.keyCode == 32 { // U
+                        Task { @MainActor in
+                            AppState.shared.codeLanguageMode = .auto
+                        }
+                        return nil
+                    }
+                    if event.keyCode == 16 { // Y
+                        Task { @MainActor in
+                            AppState.shared.codeLanguageMode = .python
+                        }
+                        return nil
+                    }
+                    if event.keyCode == 11 { // B
+                        Task { @MainActor in
+                            AppState.shared.codeLanguageMode = .bash
+                        }
+                        return nil
+                    }
                 }
             }
             

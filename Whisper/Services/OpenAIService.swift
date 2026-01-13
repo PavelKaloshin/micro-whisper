@@ -162,6 +162,65 @@ class OpenAIService {
         let chatResponse = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
         return chatResponse.choices.first?.message.content ?? ""
     }
+    
+    // MARK: - Vision Chat (for image processing)
+    func chatWithImage(
+        userMessage: String,
+        imageData: Data,
+        systemPrompt: String
+    ) async throws -> String {
+        guard let apiKey = apiKey else {
+            throw OpenAIError.noAPIKey
+        }
+        
+        let url = URL(string: "\(baseURL)/chat/completions")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Convert image to base64
+        let base64Image = imageData.base64EncodedString()
+        
+        // Build the request body manually for vision API
+        let requestBody: [String: Any] = [
+            "model": "gpt-4o",  // GPT-4o supports vision
+            "messages": [
+                ["role": "system", "content": systemPrompt],
+                [
+                    "role": "user",
+                    "content": [
+                        ["type": "text", "text": userMessage],
+                        [
+                            "type": "image_url",
+                            "image_url": [
+                                "url": "data:image/png;base64,\(base64Image)"
+                            ]
+                        ]
+                    ]
+                ]
+            ],
+            "max_tokens": 4096
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIError.invalidResponse
+        }
+        
+        if httpResponse.statusCode != 200 {
+            if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
+                throw OpenAIError.apiError(errorResponse.error.message)
+            }
+            throw OpenAIError.httpError(httpResponse.statusCode)
+        }
+        
+        let chatResponse = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+        return chatResponse.choices.first?.message.content ?? ""
+    }
 }
 
 // MARK: - Request/Response Models

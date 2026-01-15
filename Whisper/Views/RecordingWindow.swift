@@ -420,6 +420,11 @@ struct RecordingOverlayView: View {
                                 )
                             }
                             
+                            // Terminology toggle (only in transcribe mode if terms exist)
+                            if appState.recordingMode == .transcribe && !appState.customTerminology.isEmpty {
+                                TerminologyToggle(isEnabled: $appState.enableTerminologyCorrection)
+                            }
+                            
                             // Output mode toggle (paste vs chat)
                             if appState.recordingMode != .askGPT {
                                 OutputModeToggle(autoPaste: $appState.autoPasteResult)
@@ -773,6 +778,33 @@ struct ClipboardIndicator: View {
         .background(
             RoundedRectangle(cornerRadius: 5)
                 .fill(Color.gray.opacity(0.2))
+        )
+    }
+}
+
+struct TerminologyToggle: View {
+    @Binding var isEnabled: Bool
+    
+    var body: some View {
+        Button(action: { isEnabled.toggle() }) {
+            HStack(spacing: 4) {
+                Text("X")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundColor(.secondary)
+                Image(systemName: isEnabled ? "text.book.closed.fill" : "text.book.closed")
+                    .font(.system(size: 10))
+                Text("Terms")
+                    .font(.system(size: 10))
+            }
+            .foregroundColor(isEnabled ? .purple : .secondary)
+        }
+        .buttonStyle(.plain)
+        .help("X: Toggle terminology correction")
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(isEnabled ? Color.purple.opacity(0.2) : Color.gray.opacity(0.2))
         )
     }
 }
@@ -1182,6 +1214,16 @@ class RecordingWindowController: NSObject {
                 if event.keyCode == 31 { // O
                     Task { @MainActor in
                         AppState.shared.autoPasteResult.toggle()
+                    }
+                    return nil
+                }
+                
+                // X = Toggle terminology correction (only if terms exist)
+                if event.keyCode == 7 { // X
+                    Task { @MainActor in
+                        if !AppState.shared.customTerminology.isEmpty {
+                            AppState.shared.enableTerminologyCorrection.toggle()
+                        }
                     }
                     return nil
                 }

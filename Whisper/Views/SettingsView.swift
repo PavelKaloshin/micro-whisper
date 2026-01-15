@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var isSavingKey: Bool = false
     @State private var keySaveMessage: String = ""
     @State private var launchAtLogin: Bool = LaunchAtLoginService.shared.isEnabled
+    @State private var newTerm: String = ""
     
     private let pasteService = PasteService()
     
@@ -15,6 +16,11 @@ struct SettingsView: View {
             generalTab
                 .tabItem {
                     Label("General", systemImage: "gear")
+                }
+            
+            terminologyTab
+                .tabItem {
+                    Label("Terms", systemImage: "text.book.closed")
                 }
             
             apiTab
@@ -27,7 +33,7 @@ struct SettingsView: View {
                     Label("Permissions", systemImage: "lock.shield")
                 }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 500, height: 450)
         .onAppear {
             loadAPIKey()
         }
@@ -109,6 +115,83 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+    
+    // MARK: - Terminology Tab
+    private var terminologyTab: some View {
+        Form {
+            Section("Custom Terminology") {
+                Text("Add domain-specific terms that often get misheard during transcription. GPT will correct them automatically.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Section("Add Term") {
+                HStack {
+                    TextField("New term (e.g. Kubernetes, PostgreSQL)", text: $newTerm)
+                        .textFieldStyle(.roundedBorder)
+                    
+                    Button("Add") {
+                        addTerm()
+                    }
+                    .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            
+            Section("Terms List (\(appState.customTerminology.count))") {
+                if appState.customTerminology.isEmpty {
+                    Text("No terms added yet")
+                        .foregroundColor(.secondary)
+                        .italic()
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(appState.customTerminology, id: \.self) { term in
+                            HStack {
+                                Text(term)
+                                    .font(.system(.body, design: .monospaced))
+                                Spacer()
+                                Button(action: { removeTerm(term) }) {
+                                    Image(systemName: "minus.circle")
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 2)
+                            .padding(.horizontal, 4)
+                        }
+                    }
+                    .frame(maxHeight: 180)
+                }
+                
+                if !appState.customTerminology.isEmpty {
+                    Button("Clear All") {
+                        appState.customTerminology = []
+                    }
+                    .foregroundColor(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+    
+    private func addTerm() {
+        let term = newTerm.trimmingCharacters(in: .whitespaces)
+        guard !term.isEmpty else { return }
+        
+        var terms = appState.customTerminology
+        if !terms.contains(term) {
+            terms.append(term)
+            terms.sort()
+            appState.customTerminology = terms
+        }
+        newTerm = ""
+    }
+    
+    private func removeTerm(_ term: String) {
+        var terms = appState.customTerminology
+        terms.removeAll { $0 == term }
+        appState.customTerminology = terms
     }
     
     // MARK: - API Tab

@@ -202,6 +202,21 @@ class AppState: ObservableObject {
     @AppStorage("postProcessingPrompt") var postProcessingPrompt: String = "Fix grammar, punctuation, and formatting. Keep the original meaning and style. Return only the corrected text without explanations."
     @AppStorage("enableGPTProcessing") var enableGPTProcessing: Bool = true
     @AppStorage("whisperLanguage") var whisperLanguage: String = "auto" // "auto", "ru", "en", etc.
+    @AppStorage("customTerminology") var customTerminologyJSON: String = "[]" // JSON array of terms
+    @AppStorage("enableTerminologyCorrection") var enableTerminologyCorrection: Bool = false
+    
+    // Computed property for terminology list
+    var customTerminology: [String] {
+        get {
+            (try? JSONDecoder().decode([String].self, from: Data(customTerminologyJSON.utf8))) ?? []
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let json = String(data: data, encoding: .utf8) {
+                customTerminologyJSON = json
+            }
+        }
+    }
     
     // MARK: - Services
     private let audioRecorder = AudioRecorder()
@@ -277,6 +292,10 @@ class AppState: ObservableObject {
             recordingMode = .transcribe
             // Clear conversation if starting fresh
             conversationHistory = []
+            // Auto-enable terminology correction if terms are configured
+            if !customTerminology.isEmpty {
+                enableTerminologyCorrection = true
+            }
         }
         
         // Refresh clipboard for modes that use it
@@ -476,6 +495,11 @@ class AppState: ObservableObject {
                     )
                 }
                 
+                // Apply terminology correction if enabled
+                if enableTerminologyCorrection && !customTerminology.isEmpty {
+                    finalText = try await applyTerminologyCorrection(finalText)
+                }
+                
                 lastProcessedText = finalText
                 await handleResult(finalText, forMode: currentMode)
             }
@@ -540,6 +564,26 @@ class AppState: ObservableObject {
             app.activate(options: [.activateIgnoringOtherApps])
         }
         previousApp = nil
+    }
+    
+    /// Apply terminology correction using GPT
+    private func applyTerminologyCorrection(_ text: String) async throws -> String {
+        let termsList = customTerminology.joined(separator: ", ")
+        let prompt = """
+        You are a terminology correction assistant. Check the following text for transcription errors that might be misspellings of domain-specific terms.
+        
+        CORRECT TERMS LIST: \(termsList)
+        
+        If you find words that look like transcription errors of terms from the list above, replace them with the correct term.
+        Only fix obvious mistakes - don't change words that are clearly intentional.
+        Return ONLY the corrected text, nothing else.
+        """
+        
+        return try await openAIService.postProcess(
+            text: text,
+            prompt: prompt,
+            model: gptModel
+        )
     }
     
     func dismissResult(copyToClipboard: Bool = false) {

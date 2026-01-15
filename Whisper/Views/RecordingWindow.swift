@@ -7,16 +7,37 @@ struct MarkdownWebView: NSViewRepresentable {
     let markdown: String
     let isDarkMode: Bool
     
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
+        webView.navigationDelegate = context.coordinator
+        // Enable scrolling
+        webView.enclosingScrollView?.hasVerticalScroller = true
+        webView.enclosingScrollView?.hasHorizontalScroller = false
         return webView
     }
     
     func updateNSView(_ webView: WKWebView, context: Context) {
         let html = generateHTML(from: markdown)
         webView.loadHTMLString(html, baseURL: nil)
+    }
+    
+    class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if navigationAction.navigationType == .linkActivated,
+               let url = navigationAction.request.url {
+                // Open link in default browser
+                NSWorkspace.shared.open(url)
+                decisionHandler(.cancel)
+            } else {
+                decisionHandler(.allow)
+            }
+        }
     }
     
     private func generateHTML(from markdown: String) -> String {
@@ -36,6 +57,12 @@ struct MarkdownWebView: NSViewRepresentable {
             <meta charset="UTF-8">
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
+                html, body {
+                    height: auto;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+                    -webkit-overflow-scrolling: touch;
+                }
                 body {
                     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
                     font-size: 13px;
@@ -102,6 +129,13 @@ struct MarkdownWebView: NSViewRepresentable {
                     margin: 8px 0;
                     opacity: 0.8;
                 }
+                a {
+                    color: \(linkColor);
+                    text-decoration: underline;
+                }
+                a:hover {
+                    opacity: 0.8;
+                }
             </style>
         </head>
         <body>\(htmlContent)</body>
@@ -151,6 +185,12 @@ struct MarkdownWebView: NSViewRepresentable {
         // Italic (*text* or _text_)
         html = html.replacingOccurrences(of: "(?<![*])\\*([^*]+)\\*(?![*])", with: "<em>$1</em>", options: .regularExpression)
         html = html.replacingOccurrences(of: "(?<!_)_([^_]+)_(?!_)", with: "<em>$1</em>", options: .regularExpression)
+        
+        // Links [text](url)
+        let linkPattern = "\\[([^\\]]+)\\]\\(([^)]+)\\)"
+        if let regex = try? NSRegularExpression(pattern: linkPattern, options: []) {
+            html = regex.stringByReplacingMatches(in: html, options: [], range: NSRange(html.startIndex..., in: html), withTemplate: "<a href=\"$2\" target=\"_blank\">$1</a>")
+        }
         
         // Unordered lists
         html = html.replacingOccurrences(of: "(?m)^[*-] (.+)$", with: "<li>$1</li>", options: .regularExpression)
@@ -808,8 +848,9 @@ struct MessageBubble: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 } else {
                     // GPT messages - render markdown with WebView
+                    // Use fixed max height with internal scrolling for long content
                     MarkdownWebView(markdown: content, isDarkMode: colorScheme == .dark)
-                        .frame(minHeight: estimatedHeight)
+                        .frame(height: min(estimatedHeight, 400)) // Max 400px, then scroll inside
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                         .background(
@@ -826,12 +867,17 @@ struct MessageBubble: View {
         }
     }
     
-    // Estimate height based on content
+    // Estimate height based on content - generous to avoid clipping
     private var estimatedHeight: CGFloat {
         let lineCount = content.components(separatedBy: "\n").count
-        let hasTable = content.contains("|") && content.contains("-|-")
-        let baseHeight: CGFloat = hasTable ? 150 : 60
-        return max(baseHeight, CGFloat(lineCount) * 18)
+        let charCount = content.count
+        
+        // Estimate wrapped lines (assuming ~45 chars per line at typical width)
+        let wrappedLines = charCount / 45
+        let totalLines = max(lineCount, wrappedLines)
+        
+        // 28px per line + base padding
+        return CGFloat(totalLines) * 28 + 40
     }
 }
 
@@ -881,9 +927,13 @@ struct ResultView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 4)
                 }
-                .frame(maxHeight: 380)
+                .frame(maxHeight: 600)
                 .onAppear {
-                    if !appState.conversationHistory.isEmpty {
+                    // For single exchanges (Code/Process modes), scroll to top to show full response
+                    // For multi-turn conversations (Ask GPT), scroll to latest
+                    if appState.conversationHistory.count <= 2 {
+                        proxy.scrollTo("top", anchor: .top)
+                    } else if !appState.conversationHistory.isEmpty {
                         proxy.scrollTo(appState.conversationHistory.count - 1, anchor: .bottom)
                     }
                 }

@@ -19,6 +19,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         debugLog("applicationDidFinishLaunching called")
+        
+        // Migrate API key from old file-based storage to Keychain
+        KeychainService.shared.migrateFromFileIfNeeded()
+        
         setupStatusBar()
         setupHotKey()
         debugLog("Setup completed, statusItem = \(String(describing: statusItem))")

@@ -1,66 +1,102 @@
 import Foundation
+import Security
 
-/// Simple secure storage using file-based encryption
-/// Avoids Keychain password prompts during development
+/// Secure storage using macOS Keychain
+/// Uses kSecAttrAccessibleWhenUnlocked to avoid password prompts on every access
 class KeychainService {
     static let shared = KeychainService()
     
-    private let fileName = ".whisper_config"
-    
-    private var configURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let whisperDir = appSupport.appendingPathComponent("Whisper", isDirectory: true)
-        
-        // Create directory if needed
-        try? FileManager.default.createDirectory(at: whisperDir, withIntermediateDirectories: true)
-        
-        return whisperDir.appendingPathComponent(fileName)
-    }
+    private let service = "com.whisper.openai"
+    private let account = "api-key"
     
     private init() {}
     
     // MARK: - API Key Management
     func saveAPIKey(_ apiKey: String) -> Bool {
-        do {
-            // Simple obfuscation (not true encryption, but avoids plain text)
-            let obfuscated = Data(apiKey.utf8).base64EncodedString()
-            try obfuscated.write(to: configURL, atomically: true, encoding: .utf8)
-            
-            // Set file to be hidden and readable only by owner
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configURL.path)
-            
+        // First, try to delete any existing key
+        deleteAPIKey()
+        
+        guard let data = apiKey.data(using: .utf8) else {
+            return false
+        }
+        
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            // This is the key: accessible when unlocked, no user interaction required
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+        ]
+        
+        let status = SecItemAdd(query as CFDictionary, nil)
+        
+        if status == errSecSuccess {
+            print("API key saved to Keychain")
             return true
-        } catch {
-            print("Failed to save API key: \(error)")
+        } else {
+            print("Failed to save API key to Keychain: \(status)")
             return false
         }
     }
     
     func getAPIKey() -> String? {
-        do {
-            let obfuscated = try String(contentsOf: configURL, encoding: .utf8)
-            guard let data = Data(base64Encoded: obfuscated),
-                  let apiKey = String(data: data, encoding: .utf8) else {
-                return nil
-            }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        if status == errSecSuccess,
+           let data = result as? Data,
+           let apiKey = String(data: data, encoding: .utf8) {
             return apiKey
-        } catch {
-            return nil
         }
+        
+        return nil
     }
     
     @discardableResult
     func deleteAPIKey() -> Bool {
-        do {
-            try FileManager.default.removeItem(at: configURL)
-            return true
-        } catch {
-            return false
-        }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
     
     var hasAPIKey: Bool {
         getAPIKey() != nil
     }
+    
+    // MARK: - Migration from old file-based storage
+    func migrateFromFileIfNeeded() {
+        // Check if we already have a key in Keychain
+        if hasAPIKey {
+            return
+        }
+        
+        // Try to migrate from old file-based storage
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let oldConfigURL = appSupport.appendingPathComponent("Whisper/.whisper_config")
+        
+        if let obfuscated = try? String(contentsOf: oldConfigURL, encoding: .utf8),
+           let data = Data(base64Encoded: obfuscated),
+           let apiKey = String(data: data, encoding: .utf8) {
+            
+            if saveAPIKey(apiKey) {
+                // Successfully migrated, delete old file
+                try? FileManager.default.removeItem(at: oldConfigURL)
+                print("Migrated API key from file to Keychain")
+            }
+        }
+    }
 }
-

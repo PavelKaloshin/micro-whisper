@@ -27,7 +27,11 @@ A native macOS menu bar app for voice transcription using OpenAI's Whisper API w
 2. Download the latest `Whisper-X.X.X.dmg` or `Whisper-X.X.X.zip`
 3. **For DMG**: Open the DMG and drag Whisper to Applications folder
 4. **For ZIP**: Extract and move `Whisper.app` to Applications folder
-5. On first launch, right-click the app and select "Open" (required for unsigned apps)
+5. **Remove quarantine** (required for unsigned apps):
+   ```bash
+   xattr -cr /Applications/Whisper.app
+   ```
+6. Launch the app
 
 ### Building from Source
 

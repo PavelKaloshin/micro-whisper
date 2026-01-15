@@ -1,4 +1,5 @@
 import SwiftUI
+import Carbon.HIToolbox
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
@@ -8,6 +9,12 @@ struct SettingsView: View {
     @State private var keySaveMessage: String = ""
     @State private var launchAtLogin: Bool = LaunchAtLoginService.shared.isEnabled
     @State private var newTerm: String = ""
+    
+    // Hotkey recording
+    @State private var isRecordingHotkey: Bool = false
+    @State private var hotkeyMonitor: Any?
+    @AppStorage("hotkeyKeyCode") private var savedKeyCode: Int = 25 // 9 key
+    @AppStorage("hotkeyModifiers") private var savedModifiers: Int = Int(NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.shift.rawValue)
     
     private let pasteService = PasteService()
     
@@ -83,21 +90,41 @@ struct SettingsView: View {
             
             Section("Keyboard Shortcut") {
                 HStack {
-                    Text("Record Hotkey:")
+                    Text("Primary:")
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("🌐🌐 (double Globe)")
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.gray.opacity(0.2))
-                            .cornerRadius(4)
-                        Text("or ⌘⇧9")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    Text("🌐🌐 (double Globe)")
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.gray.opacity(0.2))
+                        .cornerRadius(4)
                 }
                 
-                Text("Double-press Globe key or use Cmd+Shift+9 to start/stop recording.")
+                HStack {
+                    Text("Fallback:")
+                    Spacer()
+                    
+                    Button(action: {
+                        if isRecordingHotkey {
+                            stopRecordingHotkey()
+                        } else {
+                            startRecordingHotkey()
+                        }
+                    }) {
+                        Text(isRecordingHotkey ? "Press keys..." : hotkeyDisplayString)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .frame(minWidth: 80)
+                            .background(isRecordingHotkey ? Color.accentColor.opacity(0.3) : Color.gray.opacity(0.2))
+                            .cornerRadius(4)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(isRecordingHotkey ? Color.accentColor : Color.clear, lineWidth: 2)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                Text("Double-press Globe key or use the fallback shortcut to start/stop recording.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -354,6 +381,64 @@ struct SettingsView: View {
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             keySaveMessage = ""
+        }
+    }
+    
+    // MARK: - Hotkey Recording
+    private var hotkeyDisplayString: String {
+        var parts: [String] = []
+        let modifiers = NSEvent.ModifierFlags(rawValue: UInt(savedModifiers))
+        
+        if modifiers.contains(.control) { parts.append("⌃") }
+        if modifiers.contains(.option) { parts.append("⌥") }
+        if modifiers.contains(.shift) { parts.append("⇧") }
+        if modifiers.contains(.command) { parts.append("⌘") }
+        
+        let keyName = keyCodeToString(UInt16(savedKeyCode))
+        parts.append(keyName)
+        
+        return parts.joined()
+    }
+    
+    private func keyCodeToString(_ keyCode: UInt16) -> String {
+        let keyMap: [UInt16: String] = [
+            0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
+            11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T", 18: "1", 19: "2",
+            20: "3", 21: "4", 22: "6", 23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8",
+            29: "0", 30: "]", 31: "O", 32: "U", 33: "[", 34: "I", 35: "P", 36: "↩", 37: "L",
+            38: "J", 39: "'", 40: "K", 41: ";", 42: "\\", 43: ",", 44: "/", 45: "N", 46: "M",
+            47: ".", 48: "⇥", 49: "Space", 50: "`", 51: "⌫", 53: "⎋",
+            96: "F5", 97: "F6", 98: "F7", 99: "F3", 100: "F8", 101: "F9", 103: "F11",
+            105: "F13", 107: "F14", 109: "F10", 111: "F12", 113: "F15", 118: "F4",
+            119: "F2", 120: "F1", 122: "F1", 123: "←", 124: "→", 125: "↓", 126: "↑"
+        ]
+        return keyMap[keyCode] ?? "?"
+    }
+    
+    private func startRecordingHotkey() {
+        isRecordingHotkey = true
+        
+        hotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Ignore modifier-only presses
+            guard event.keyCode != 0 else { return event }
+            
+            // Save the new hotkey
+            self.savedKeyCode = Int(event.keyCode)
+            self.savedModifiers = Int(event.modifierFlags.intersection([.command, .option, .shift, .control]).rawValue)
+            
+            // Update AppDelegate
+            AppDelegate.shared?.updateHotKey(keyCode: UInt32(event.keyCode), modifiers: event.modifierFlags)
+            
+            self.stopRecordingHotkey()
+            return nil
+        }
+    }
+    
+    private func stopRecordingHotkey() {
+        isRecordingHotkey = false
+        if let monitor = hotkeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            hotkeyMonitor = nil
         }
     }
 }

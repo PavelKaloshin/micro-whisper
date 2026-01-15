@@ -24,7 +24,7 @@ struct MenuBarView: View {
                         .foregroundColor(appState.isRecording ? .red : .primary)
                     Text(appState.isRecording ? "Stop Recording" : "Start Recording")
                     Spacer()
-                    Text("⌘⇧9")
+                    Text("🌐🌐 / \(currentHotkeyDisplayString())")
                         .foregroundColor(.secondary)
                         .font(.caption)
                 }

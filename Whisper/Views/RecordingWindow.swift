@@ -1,6 +1,32 @@
 import SwiftUI
 import WebKit
 
+// MARK: - Hotkey Display Helper
+
+func currentHotkeyDisplayString() -> String {
+    let savedKeyCode = UserDefaults.standard.object(forKey: "hotkeyKeyCode") as? Int ?? 25
+    let savedModifiers = UserDefaults.standard.object(forKey: "hotkeyModifiers") as? Int ?? Int(NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.shift.rawValue)
+    
+    var parts: [String] = []
+    let modifiers = NSEvent.ModifierFlags(rawValue: UInt(savedModifiers))
+    
+    if modifiers.contains(.control) { parts.append("⌃") }
+    if modifiers.contains(.option) { parts.append("⌥") }
+    if modifiers.contains(.shift) { parts.append("⇧") }
+    if modifiers.contains(.command) { parts.append("⌘") }
+    
+    let keyMap: [Int: String] = [
+        0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
+        11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T", 18: "1", 19: "2",
+        20: "3", 21: "4", 22: "6", 23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8",
+        29: "0", 30: "]", 31: "O", 32: "U", 33: "[", 34: "I", 35: "P", 37: "L",
+        38: "J", 40: "K", 45: "N", 46: "M", 49: "Space"
+    ]
+    parts.append(keyMap[savedKeyCode] ?? "?")
+    
+    return parts.joined()
+}
+
 // MARK: - Markdown WebView
 
 struct MarkdownWebView: NSViewRepresentable {
@@ -516,11 +542,12 @@ struct RecordingOverlayView: View {
     }
     
     private var subtitleText: String {
+        let hotkey = currentHotkeyDisplayString()
         switch appState.processingState {
         case .idle:
-            return "Press ⌘⇧9 to start"
+            return "Press 🌐🌐 or \(hotkey) to start"
         case .recording:
-            return "Speak now • Press ⌘⇧9 to finish"
+            return "Speak now • Press 🌐🌐 or \(hotkey) to finish"
         case .transcribing:
             return "Converting speech to text..."
         case .processing:
@@ -1020,7 +1047,7 @@ struct ResultView: View {
                 .buttonStyle(.plain)
             }
             
-            Text("🌐🌐 / ⌘⇧9 — continue • Esc — close • C — copy last")
+            Text("🌐🌐 / \(currentHotkeyDisplayString()) — continue • Esc — close • C — copy last")
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
         }

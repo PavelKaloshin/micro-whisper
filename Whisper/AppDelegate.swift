@@ -140,13 +140,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Globe key has keyCode 63 (kVK_Function)
         setupGlobeKeyMonitor()
         
-        // Keep Cmd+Shift+9 as fallback
-        hotKey = HotKey(key: .nine, modifiers: [.command, .shift])
-        hotKey?.keyDownHandler = {
-            Task { @MainActor in
-                await Self.toggleRecording()
-            }
-        }
+        // Load saved fallback hotkey or use default (Cmd+Shift+9)
+        let savedKeyCode = UserDefaults.standard.object(forKey: "hotkeyKeyCode") as? UInt32 ?? 25
+        let savedModifiers = UserDefaults.standard.object(forKey: "hotkeyModifiers") as? Int ?? Int(NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.shift.rawValue)
+        
+        updateHotKey(keyCode: savedKeyCode, modifiers: NSEvent.ModifierFlags(rawValue: UInt(savedModifiers)))
     }
     
     private func setupGlobeKeyMonitor() {
@@ -215,7 +213,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    func updateHotKey(key: Key, modifiers: NSEvent.ModifierFlags) {
+    func updateHotKey(keyCode: UInt32, modifiers: NSEvent.ModifierFlags) {
+        // Convert keyCode to HotKey's Key type
+        guard let key = Key(carbonKeyCode: keyCode) else {
+            print("Invalid keyCode: \(keyCode)")
+            return
+        }
+        
         hotKey = HotKey(key: key, modifiers: modifiers)
         hotKey?.keyDownHandler = {
             Task { @MainActor in

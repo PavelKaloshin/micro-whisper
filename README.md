@@ -4,37 +4,45 @@ A native macOS menu bar app for voice transcription using OpenAI's Whisper API w
 
 ## Features
 
-- **Global Hotkey**: Start/stop recording from anywhere with `Cmd + Shift + 9`
+- **Global Hotkey**: Double-press Globe key or `Cmd + Shift + 9` to start/stop recording
 - **Whisper Transcription**: High-quality speech-to-text via OpenAI's Whisper API
 - **GPT Post-Processing**: Automatically fix grammar, punctuation, and formatting
+- **Multiple Modes**: Transcribe, Ask GPT, Respond, Code generation, Process clipboard
+- **Formatting Options**: Default, Notion-style, Slack-style output
+- **Custom Terminology**: Add domain-specific terms for better transcription accuracy
+- **Web Search**: GPT can search the web for current information
 - **Auto-Paste**: Results are copied to clipboard and pasted into the active text field
 - **Menu Bar App**: Runs quietly in the background with minimal footprint
-- **Configurable**: Custom hotkey, GPT prompt, and model selection
 
 ## Requirements
 
-- macOS 13.0 (Ventura) or later
-- Xcode 15.0 or later (for building)
+- macOS 14.0 (Sonoma) or later
 - OpenAI API key
 
 ## Installation
+
+### Download Release (Recommended)
+
+1. Go to [Releases](https://github.com/IncodeTechnologies/whisper/releases)
+2. Download the latest `Whisper-X.X.X.dmg` or `Whisper-X.X.X.zip`
+3. **For DMG**: Open the DMG and drag Whisper to Applications folder
+4. **For ZIP**: Extract and move `Whisper.app` to Applications folder
+5. On first launch, right-click the app and select "Open" (required for unsigned apps)
 
 ### Building from Source
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/whisper.git
+   git clone https://github.com/IncodeTechnologies/whisper.git
    cd whisper
    ```
 
-2. Open the Xcode project:
+2. Build with Xcode:
    ```bash
-   open Whisper.xcodeproj
+   xcodebuild -project Whisper.xcodeproj -scheme Whisper -configuration Release build
    ```
-
-3. Build and run:
-   - Select your Mac as the target device
-   - Press `Cmd + R` to build and run
+   
+   Or open in Xcode and press `Cmd + R`
 
 ### First-Time Setup
 
@@ -50,27 +58,70 @@ A native macOS menu bar app for voice transcription using OpenAI's Whisper API w
 
 ## Usage
 
-1. **Start Recording**: Press `Cmd + Shift + 9` (or your configured hotkey)
-2. **Speak**: The menu bar icon will show a red indicator while recording
-3. **Stop Recording**: Press the hotkey again
-4. **Wait**: Your speech is transcribed and processed
-5. **Done**: The result is automatically pasted into your current text field
+1. **Start Recording**: Double-press 🌐 Globe key or `Cmd + Shift + 9`
+2. **Select Mode**: Use hotkeys to switch modes (T/A/R/C/P)
+3. **Speak**: Recording indicator shows audio level
+4. **Stop Recording**: Press the hotkey again or Escape to cancel
+5. **Done**: Result is pasted or shown in chat depending on settings
 
-### Settings
+### Recording Hotkeys
 
-Access settings via the menu bar icon:
+| Key | Action |
+|-----|--------|
+| 🌐🌐 | Start/stop recording (double Globe) |
+| ⌘⇧9 | Start/stop recording (alternative) |
+| Esc / Q | Cancel recording |
 
-- **OpenAI API Key**: Your API key for Whisper and GPT
-- **GPT Model**: Choose between `gpt-4o` and `gpt-4o-mini`
-- **Post-Processing Prompt**: Customize how GPT refines your transcription
-- **Enable GPT Processing**: Toggle post-processing on/off
+### Mode Selection (during recording)
+
+| Key | Mode | Description |
+|-----|------|-------------|
+| T | Transcribe | Convert speech to text with formatting |
+| A | Ask GPT | Ask a question, get an answer in chat |
+| R | Respond | Use clipboard as context, voice as instruction |
+| C | Code | Generate code from voice description |
+| P | Process | Process clipboard content with voice command |
+
+### Language Selection
+
+| Key | Language |
+|-----|----------|
+| 0 | Auto-detect |
+| 1 | English |
+| 2 | Russian |
+
+### Format Selection (Transcribe mode)
+
+| Key | Format |
+|-----|--------|
+| D | Default |
+| N | Notion-style |
+| S | Slack-style |
+
+### Other Options
+
+| Key | Option |
+|-----|--------|
+| O | Toggle Paste/Chat output |
+| V | Toggle clipboard context |
+| X | Toggle terminology correction |
+
+## Settings
+
+Access via menu bar icon → Settings:
+
+- **General**: Language, GPT model, post-processing prompt
+- **Terms**: Custom terminology for better transcription
+- **API**: OpenAI API key configuration
+- **Permissions**: Microphone and Accessibility status
 
 ## Permissions Explained
 
 | Permission | Purpose |
 |------------|---------|
 | Microphone | Record audio for transcription |
-| Accessibility | Simulate `Cmd+V` to paste text into active app |
+| Accessibility | Simulate paste into active app |
+| Automation | More reliable paste via System Events |
 
 ## License
 

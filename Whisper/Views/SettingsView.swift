@@ -144,30 +144,43 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                         .italic()
                 } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(appState.customTerminology, id: \.self) { term in
-                            HStack {
-                                Text(term)
-                                    .font(.system(.body, design: .monospaced))
-                                Spacer()
-                                Button(action: { removeTerm(term) }) {
-                                    Image(systemName: "minus.circle")
-                                        .foregroundColor(.secondary)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(appState.customTerminology, id: \.self) { term in
+                                HStack {
+                                    Text(term)
+                                        .font(.system(.body, design: .monospaced))
+                                    Spacer(minLength: 20)
+                                    Button(action: { removeTerm(term) }) {
+                                        Image(systemName: "minus.circle")
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .buttonStyle(.borderless)
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 8)
+                                Divider()
                             }
-                            .padding(.vertical, 2)
-                            .padding(.horizontal, 4)
                         }
                     }
-                    .frame(maxHeight: 180)
+                    .frame(height: 200)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                    .cornerRadius(8)
                 }
                 
                 if !appState.customTerminology.isEmpty {
-                    Button("Clear All") {
-                        appState.customTerminology = []
+                    HStack {
+                        Button("Clear All") {
+                            appState.customTerminology = []
+                        }
+                        .foregroundColor(.red)
+                        
+                        Spacer()
+                        
+                        Text("\(appState.customTerminology.count) terms")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
-                    .foregroundColor(.secondary)
                 }
             }
         }

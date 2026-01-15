@@ -456,7 +456,7 @@ struct RecordingOverlayView: View {
         if appState.recordingMode == .askGPT {
             return .clear // Ask mode always shows in chat, no border needed
         }
-        return appState.autoPasteResult ? .orange : .cyan
+        return appState.autoPasteResult ? .green : .cyan
     }
     
     private var iconName: String {
@@ -483,7 +483,7 @@ struct RecordingOverlayView: View {
         case .recording:
             return .red
         case .transcribing:
-            return .orange
+            return .green
         case .processing:
             return .blue
         case .showingResult:
@@ -792,7 +792,7 @@ struct OutputModeToggle: View {
                     Text(autoPaste ? "Paste" : "Chat")
                         .font(.system(size: 10))
                 }
-                .foregroundColor(autoPaste ? .orange : .cyan)
+                .foregroundColor(autoPaste ? .green : .cyan)
             }
             .buttonStyle(.plain)
             .help("O: Toggle output mode - Paste to app or show in chat")

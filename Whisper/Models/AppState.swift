@@ -321,6 +321,7 @@ class AppState: ObservableObject {
                 processingState = .processing
                 let systemPrompt = """
                 You are a helpful voice assistant. The user speaks to you via voice, and you answer their questions.
+                You have access to web search for current information.
                 Answer concisely and helpfully. Use markdown formatting for better readability (bold, lists, tables, code blocks, etc.).
                 Match the language of the user's message - if they speak Russian, answer in Russian; if English, answer in English.
                 """
@@ -329,7 +330,8 @@ class AppState: ObservableObject {
                     userMessage: transcription,
                     history: conversationHistory,
                     systemPrompt: systemPrompt,
-                    model: gptModel
+                    model: gptModel,
+                    enableWebSearch: true
                 )
                 
                 conversationHistory.append((role: "user", content: transcription))
@@ -377,7 +379,8 @@ class AppState: ObservableObject {
                     userMessage: respondUserMessage,
                     history: [],
                     systemPrompt: respondSystemPrompt,
-                    model: gptModel
+                    model: gptModel,
+                    enableWebSearch: true
                 )
                 
                 logToFile("Respond mode result: \(finalText.prefix(100))")
@@ -390,6 +393,7 @@ class AppState: ObservableObject {
                 let languageHint = codeLanguageMode.promptHint
                 let codeSystemPrompt = """
                 You are a code generator. Generate code based on the user's voice description.
+                You can search the web for API docs or examples if needed.
                 \(languageHint)
                 Return ONLY the code - no explanations, no markdown code blocks, no comments unless specifically asked.
                 """
@@ -398,7 +402,8 @@ class AppState: ObservableObject {
                     userMessage: "Generate code: \(transcription)",
                     history: [],
                     systemPrompt: codeSystemPrompt,
-                    model: gptModel
+                    model: gptModel,
+                    enableWebSearch: true
                 )
                 
                 logToFile("Code mode result: \(finalText.prefix(100))")
@@ -414,6 +419,7 @@ class AppState: ObservableObject {
                     // Text processing
                     let processSystemPrompt = """
                     You are a text processor. Process the given content according to the user's command.
+                    You can search the web for additional context if needed.
                     Return ONLY the processed result - no explanations, no extra text.
                     """
                     
@@ -432,7 +438,8 @@ class AppState: ObservableObject {
                         userMessage: processUserMessage,
                         history: [],
                         systemPrompt: processSystemPrompt,
-                        model: gptModel
+                        model: gptModel,
+                        enableWebSearch: true
                     )
                     
                 case .image(let imageData):

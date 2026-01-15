@@ -115,7 +115,8 @@ class OpenAIService {
         userMessage: String,
         history: [(role: String, content: String)],
         systemPrompt: String,
-        model: String
+        model: String,
+        enableWebSearch: Bool = false
     ) async throws -> String {
         guard let apiKey = apiKey else {
             throw OpenAIError.noAPIKey
@@ -128,23 +129,30 @@ class OpenAIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         // Build messages array
-        var messages: [ChatMessage] = [ChatMessage(role: "system", content: systemPrompt)]
+        var messages: [[String: Any]] = [["role": "system", "content": systemPrompt]]
         
         // Add conversation history
         for msg in history {
-            messages.append(ChatMessage(role: msg.role, content: msg.content))
+            messages.append(["role": msg.role, "content": msg.content])
         }
         
         // Add current user message
-        messages.append(ChatMessage(role: "user", content: userMessage))
+        messages.append(["role": "user", "content": userMessage])
         
-        let chatRequest = ChatCompletionRequest(
-            model: model,
-            messages: messages,
-            temperature: 0.7
-        )
+        // Build request body - use search model if web search is enabled
+        var requestBody: [String: Any] = [
+            "model": enableWebSearch ? "gpt-4o-search-preview" : model,
+            "messages": messages
+        ]
         
-        request.httpBody = try JSONEncoder().encode(chatRequest)
+        if enableWebSearch {
+            // Add web_search_options to enable browsing
+            requestBody["web_search_options"] = [String: Any]()
+        } else {
+            requestBody["temperature"] = 0.7
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
         let (data, response) = try await URLSession.shared.data(for: request)
         

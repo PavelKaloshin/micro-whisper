@@ -12,7 +12,8 @@ class OpenAIService {
     /// - Parameters:
     ///   - audioURL: URL to the audio file
     ///   - language: ISO-639-1 language code (e.g. "ru", "en") or nil for auto-detect
-    func transcribe(audioURL: URL, language: String? = nil) async throws -> String {
+    ///   - prompt: Optional prompt to guide the transcription (e.g. terminology)
+    func transcribe(audioURL: URL, language: String? = nil, prompt: String? = nil) async throws -> String {
         guard let apiKey = apiKey else {
             throw OpenAIError.noAPIKey
         }
@@ -38,6 +39,13 @@ class OpenAIService {
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
             body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n".data(using: .utf8)!)
             body.append("\(language)\r\n".data(using: .utf8)!)
+        }
+        
+        // Add prompt parameter if specified
+        if let prompt = prompt {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(prompt)\r\n".data(using: .utf8)!)
         }
         
         // Add audio file

@@ -329,7 +329,17 @@ class AppState: ObservableObject {
         processingState = .transcribing
         do {
             let language = whisperLanguage == "auto" ? nil : whisperLanguage
-            let transcription = try await openAIService.transcribe(audioURL: audioURL, language: language)
+            
+            // Context for Whisper: it helps with technical terms and style
+            let whisperPrompt = (enableTerminologyCorrection && !customTerminology.isEmpty) 
+                ? "Technical terms: " + customTerminology.joined(separator: ", ") 
+                : "Professional transcription, correct grammar and punctuation."
+                
+            let transcription = try await openAIService.transcribe(
+                audioURL: audioURL, 
+                language: language,
+                prompt: whisperPrompt
+            )
             lastTranscription = transcription
             
             var finalText = transcription
@@ -487,17 +497,28 @@ class AppState: ObservableObject {
                 // Normal transcribe mode - fix and paste with selected formatting
                 if enableGPTProcessing {
                     processingState = .processing
-                    let prompt = formattingMode.prompt + "\nKeep the same language as the original text."
+                    
+                    var basePrompt = formattingMode.prompt + "\nKeep the same language as the original text."
+                    
+                    // Inject terminology rules directly into the main prompt
+                    if enableTerminologyCorrection && !customTerminology.isEmpty {
+                        let terms = customTerminology.joined(separator: ", ")
+                        basePrompt += """
+                        
+                        
+                        TERMINOLOGY RULES:
+                        - You are also given a list of domain-specific terms: \(terms)
+                        - If you see words that look like phonetic misspellings of these terms, correct them.
+                        - CRITICAL: Be extremely conservative. Only replace if it's an obvious transcription error. 
+                        - DO NOT change common words that make sense in context.
+                        """
+                    }
+                    
                     finalText = try await openAIService.postProcess(
                         text: transcription,
-                        prompt: prompt,
+                        prompt: basePrompt,
                         model: gptModel
                     )
-                }
-                
-                // Apply terminology correction if enabled
-                if enableTerminologyCorrection && !customTerminology.isEmpty {
-                    finalText = try await applyTerminologyCorrection(finalText)
                 }
                 
                 lastProcessedText = finalText
@@ -570,13 +591,18 @@ class AppState: ObservableObject {
     private func applyTerminologyCorrection(_ text: String) async throws -> String {
         let termsList = customTerminology.joined(separator: ", ")
         let prompt = """
-        You are a terminology correction assistant. Check the following text for transcription errors that might be misspellings of domain-specific terms.
+        You are a terminology correction assistant. Your task is to fix transcription errors where domain-specific terms might have been misheard by Whisper.
         
-        CORRECT TERMS LIST: \(termsList)
+        ALLOWED TERMS:
+        \(termsList)
         
-        If you find words that look like transcription errors of terms from the list above, replace them with the correct term.
-        Only fix obvious mistakes - don't change words that are clearly intentional.
-        Return ONLY the corrected text, nothing else.
+        CRITICAL RULES:
+        1. Only replace a word if it sounds PHONETICALLY SIMILAR to one of the allowed terms (e.g., "sich" -> "Sich", "whisper" -> "Whisper").
+        2. DO NOT replace common dictionary words unless you are 100% sure they are misheard terms from the list.
+        3. DO NOT hallucinate or change the meaning of the sentence.
+        4. If a word doesn't clearly match a term from the list, LEAVE IT AS IS.
+        5. Be conservative. It's better to miss a correction than to make a wrong replacement.
+        6. Return ONLY the final text, nothing else.
         """
         
         return try await openAIService.postProcess(

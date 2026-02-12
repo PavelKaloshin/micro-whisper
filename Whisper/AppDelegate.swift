@@ -162,12 +162,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func handleGlobeKey(event: NSEvent) {
-        // Globe key detection: keyCode 63 or check for .function modifier
-        // Double-press detection for activation
+        // Globe key detection: keyCode 63 (kVK_Function) is the Fn/Globe key.
+        // A single physical press produces two flagsChanged events: key-down and key-up.
+        // We must only count key-DOWN events (when .function modifier is being SET)
+        // to avoid a single press-release being counted as two taps.
         
-        let isGlobeKey = event.keyCode == 63 || event.modifierFlags.contains(.function)
-        
-        guard isGlobeKey && event.type == .flagsChanged else { return }
+        guard event.type == .flagsChanged else { return }
+        guard event.keyCode == 63 else { return }
+        guard event.modifierFlags.contains(.function) else { return }
         
         let now = Date()
         

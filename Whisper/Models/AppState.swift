@@ -204,7 +204,7 @@ class AppState: ObservableObject {
     @AppStorage("whisperLanguage") var whisperLanguage: String = "auto" // "auto", "ru", "en", etc.
     @AppStorage("customTerminology") var customTerminologyJSON: String = "[]" // JSON array of terms
     @AppStorage("enableTerminologyCorrection") var enableTerminologyCorrection: Bool = false
-    @AppStorage("globeKeyDoublePressOnly") var globeKeyDoublePressOnly: Bool = true
+    @AppStorage("globeKeyDoublePressOnly") var globeKeyDoublePressOnly: Bool = false
     
     // Computed property for terminology list
     var customTerminology: [String] {

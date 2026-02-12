@@ -164,29 +164,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleGlobeKey(event: NSEvent) {
         // Globe key detection: keyCode 63 (kVK_Function) is the Fn/Globe key.
         // A single physical press produces two flagsChanged events: key-down and key-up.
-        // We must only count key-DOWN events (when .function modifier is being SET)
+        // We only count key-DOWN events (when .function modifier is being SET)
         // to avoid a single press-release being counted as two taps.
         
         guard event.type == .flagsChanged else { return }
         guard event.keyCode == 63 else { return }
         guard event.modifierFlags.contains(.function) else { return }
         
-        let now = Date()
+        let requireDoublePpress = AppState.shared.globeKeyDoublePressOnly
         
-        if let lastTime = lastGlobeKeyTime {
-            let timeDiff = now.timeIntervalSince(lastTime)
+        if requireDoublePpress {
+            // Double-press mode: require two presses within 0.4 seconds
+            let now = Date()
             
-            // Double press within 0.4 seconds
-            if timeDiff < 0.4 && timeDiff > 0.05 {
-                lastGlobeKeyTime = nil
-                Task { @MainActor in
-                    await Self.toggleRecording()
+            if let lastTime = lastGlobeKeyTime {
+                let timeDiff = now.timeIntervalSince(lastTime)
+                
+                if timeDiff < 0.4 && timeDiff > 0.05 {
+                    lastGlobeKeyTime = nil
+                    Task { @MainActor in
+                        await Self.toggleRecording()
+                    }
+                    return
                 }
-                return
+            }
+            
+            lastGlobeKeyTime = now
+        } else {
+            // Single-press mode: trigger immediately on key-down
+            lastGlobeKeyTime = nil
+            Task { @MainActor in
+                await Self.toggleRecording()
             }
         }
-        
-        lastGlobeKeyTime = now
     }
     
     @MainActor

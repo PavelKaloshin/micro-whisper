@@ -92,12 +92,14 @@ struct SettingsView: View {
                 HStack {
                     Text("Primary:")
                     Spacer()
-                    Text("🌐🌐 (double Globe)")
+                    Text(appState.globeKeyDoublePressOnly ? "🌐🌐 (double Globe)" : "🌐 (single Globe)")
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.gray.opacity(0.2))
                         .cornerRadius(4)
                 }
+                
+                Toggle("Require double press", isOn: $appState.globeKeyDoublePressOnly)
                 
                 HStack {
                     Text("Fallback:")
@@ -124,7 +126,9 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
                 
-                Text("Double-press Globe key or use the fallback shortcut to start/stop recording.")
+                Text(appState.globeKeyDoublePressOnly
+                     ? "Double-press Globe key or use the fallback shortcut to start/stop recording."
+                     : "Single-press Globe key or use the fallback shortcut to start/stop recording.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

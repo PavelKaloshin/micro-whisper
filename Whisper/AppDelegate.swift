@@ -171,7 +171,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard event.keyCode == 63 else { return }
         guard event.modifierFlags.contains(.function) else { return }
         
-        let requireDoublePpress = AppState.shared.globeKeyDoublePressOnly
+        let requireDoublePpress = UserDefaults.standard.bool(forKey: "globeKeyDoublePressOnly")
         
         if requireDoublePpress {
             // Double-press mode: require two presses within 0.4 seconds

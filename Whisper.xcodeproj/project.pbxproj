@@ -19,6 +19,9 @@
 		A100000A /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = A300000A /* HotKey */; };
 		A100000B /* RecordingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* RecordingWindow.swift */; };
 		A100000C /* LaunchAtLoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D /* LaunchAtLoginService.swift */; };
+		B1000001 /* StubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001 /* StubURLProtocol.swift */; };
+		B1000002 /* OpenAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002 /* OpenAIServiceTests.swift */; };
+		B1000003 /* ModeLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000003 /* ModeLogicTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +39,10 @@
 		A200000B /* Whisper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Whisper.entitlements; sourceTree = "<group>"; };
 		A200000C /* RecordingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingWindow.swift; sourceTree = "<group>"; };
 		A200000D /* LaunchAtLoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginService.swift; sourceTree = "<group>"; };
+		B2000000 /* WhisperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhisperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B2000001 /* StubURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubURLProtocol.swift; sourceTree = "<group>"; };
+		B2000002 /* OpenAIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIServiceTests.swift; sourceTree = "<group>"; };
+		B2000003 /* ModeLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeLogicTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -47,13 +54,39 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B4000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		B6000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A8000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A6000001;
+			remoteInfo = Whisper;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		B6000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A6000001 /* Whisper */;
+			targetProxy = B6000003 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXGroup section */
 		A5000000 = {
 			isa = PBXGroup;
 			children = (
 				A5000001 /* Whisper */,
+				B5000001 /* WhisperTests */,
 				A5000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -106,8 +139,19 @@
 			isa = PBXGroup;
 			children = (
 				A2000000 /* Whisper.app */,
+				B2000000 /* WhisperTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B5000001 /* WhisperTests */ = {
+			isa = PBXGroup;
+			children = (
+				B2000002 /* OpenAIServiceTests.swift */,
+				B2000003 /* ModeLogicTests.swift */,
+				B2000001 /* StubURLProtocol.swift */,
+			);
+			path = WhisperTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -133,6 +177,23 @@
 			productReference = A2000000 /* Whisper.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B6000001 /* WhisperTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B7000001 /* Build configuration list for PBXNativeTarget "WhisperTests" */;
+			buildPhases = (
+				B4000001 /* Sources */,
+				B4000002 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B6000002 /* PBXTargetDependency */,
+			);
+			name = WhisperTests;
+			productName = WhisperTests;
+			productReference = B2000000 /* WhisperTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -145,6 +206,10 @@
 				TargetAttributes = {
 					A6000001 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					B6000001 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A6000001;
 					};
 				};
 			};
@@ -165,6 +230,7 @@
 			projectRoot = "";
 			targets = (
 				A6000001 /* Whisper */,
+				B6000001 /* WhisperTests */,
 			);
 		};
 /* End PBXProject section */
@@ -195,6 +261,16 @@
 				A1000009 /* SettingsView.swift in Sources */,
 				A100000B /* RecordingWindow.swift in Sources */,
 				A100000C /* LaunchAtLoginService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B4000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1000002 /* OpenAIServiceTests.swift in Sources */,
+				B1000003 /* ModeLogicTests.swift in Sources */,
+				B1000001 /* StubURLProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -375,6 +451,42 @@
 			};
 			name = Release;
 		};
+		B9000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.whisper.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Whisper.app/Contents/MacOS/Whisper";
+			};
+			name = Debug;
+		};
+		B9000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.whisper.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Whisper.app/Contents/MacOS/Whisper";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -392,6 +504,15 @@
 			buildConfigurations = (
 				A9000003 /* Debug */,
 				A9000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B7000001 /* Build configuration list for PBXNativeTarget "WhisperTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B9000001 /* Debug */,
+				B9000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

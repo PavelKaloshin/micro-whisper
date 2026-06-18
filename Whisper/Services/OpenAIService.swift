@@ -1,10 +1,24 @@
 import Foundation
 
 class OpenAIService {
-    private let baseURL = "https://api.openai.com/v1"
-    
+    private let baseURL: String
+    private let session: URLSession
+    private let apiKeyProvider: () -> String?
+
+    /// Dependency-injection seam for tests: pass a stub `URLSession` (e.g. backed
+    /// by a custom `URLProtocol`), an override `baseURL`, and/or a fake key provider.
+    /// The defaults reproduce production behavior (real API URL, shared session,
+    /// key from the Keychain), so existing callers (`OpenAIService()`) are unchanged.
+    init(baseURL: String = "https://api.openai.com/v1",
+         session: URLSession = .shared,
+         apiKeyProvider: @escaping () -> String? = { KeychainService.shared.getAPIKey() }) {
+        self.baseURL = baseURL
+        self.session = session
+        self.apiKeyProvider = apiKeyProvider
+    }
+
     private var apiKey: String? {
-        KeychainService.shared.getAPIKey()
+        apiKeyProvider()
     }
     
     // MARK: - Whisper Transcription
@@ -61,7 +75,7 @@ class OpenAIService {
         
         request.httpBody = body
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIError.invalidResponse
@@ -101,7 +115,7 @@ class OpenAIService {
         
         request.httpBody = try JSONEncoder().encode(requestBody)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIError.invalidResponse
@@ -162,7 +176,7 @@ class OpenAIService {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIError.invalidResponse
@@ -221,7 +235,7 @@ class OpenAIService {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIError.invalidResponse

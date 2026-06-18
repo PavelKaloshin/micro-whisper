@@ -23,7 +23,7 @@ A native macOS menu bar app for voice transcription using OpenAI's Whisper API w
 
 ### Download Release (Recommended)
 
-1. Go to [Releases](https://github.com/IncodeTechnologies/whisper/releases)
+1. Go to [Releases](https://github.com/PavelKaloshin/micro-whisper/releases)
 2. Download the latest `Whisper-X.X.X.dmg` or `Whisper-X.X.X.zip`
 3. **For DMG**: Open the DMG and drag Whisper to Applications folder
 4. **For ZIP**: Extract and move `Whisper.app` to Applications folder
@@ -37,8 +37,8 @@ A native macOS menu bar app for voice transcription using OpenAI's Whisper API w
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/IncodeTechnologies/whisper.git
-   cd whisper
+   git clone https://github.com/PavelKaloshin/micro-whisper.git
+   cd micro-whisper
    ```
 
 2. Build with Xcode:

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make:*)"
+    ],
+    "deny": [
+      "Edit(Makefile)",
+      "Edit(./Makefile)",
+      "Write(Makefile)",
+      "Write(./Makefile)"
+    ]
+  }
+}

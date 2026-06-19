@@ -3,7 +3,7 @@
 # disabled, mirroring the CI release workflow (.github/workflows/release.yml).
 
 .DEFAULT_GOAL := build
-.PHONY: build run clean test
+.PHONY: build run clean test spm-path
 
 PROJECT := Whisper.xcodeproj
 SCHEME := Whisper
@@ -33,3 +33,6 @@ test:
 				-configuration Debug -derivedDataPath $(DERIVED) \
 				-destination 'platform=macOS' \
 				CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+spm-path:
+	@echo $(DERIVED)/SourcePackages/checkouts

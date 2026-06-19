@@ -60,7 +60,22 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
+            Section("Live (Real-Time) Transcription") {
+                Toggle("Stream transcription in real time", isOn: $appState.liveModeEnabled)
+
+                Picker("Engine", selection: $appState.liveEngineRaw) {
+                    ForEach(LiveTranscriptionEngine.allCases, id: \.rawValue) { engine in
+                        Text(engine.displayName).tag(engine.rawValue)
+                    }
+                }
+                .disabled(!appState.liveModeEnabled)
+
+                Text("When on, the record hotkey streams text live as you speak. Cloud uses OpenAI's Realtime API; Local runs WhisperKit on-device (downloads a model on first use; requires macOS 15+).")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section("GPT Post-Processing") {
                 Toggle("Enable GPT post-processing", isOn: $appState.enableGPTProcessing)
                 

@@ -173,6 +173,8 @@ class AppState: ObservableObject {
     @Published var useClipboardContext: Bool = true
     @Published var clipboardContent: ClipboardContent = .empty
     @Published var autoPasteResult: Bool = true // If true, paste result. If false, show in chat.
+    @Published var liveTranscript: String = ""   // live partial transcript shown while streaming
+    @Published var isLiveTranscribing: Bool = false
     
     enum ClipboardContent {
         case empty
@@ -205,6 +207,14 @@ class AppState: ObservableObject {
     @AppStorage("customTerminology") var customTerminologyJSON: String = "[]" // JSON array of terms
     @AppStorage("enableTerminologyCorrection") var enableTerminologyCorrection: Bool = false
     @AppStorage("globeKeyDoublePressOnly") var globeKeyDoublePressOnly: Bool = false
+    @AppStorage("liveModeEnabled") var liveModeEnabled: Bool = false
+    @AppStorage("liveTranscriptionEngine") var liveEngineRaw: String = "cloud"
+
+    /// Selected live backend, backed by `liveEngineRaw` (@AppStorage stores the raw value).
+    var liveEngine: LiveTranscriptionEngine {
+        get { LiveTranscriptionEngine(rawValue: liveEngineRaw) ?? .cloud }
+        set { liveEngineRaw = newValue.rawValue }
+    }
     
     // Computed property for terminology list
     var customTerminology: [String] {
@@ -223,6 +233,7 @@ class AppState: ObservableObject {
     private let audioRecorder = AudioRecorder()
     private let openAIService = OpenAIService()
     private let pasteService = PasteService()
+    private var liveTranscriber: LiveTranscriber?
     private var cancellables = Set<AnyCancellable>()
     
     // Track previous app for restoring focus after recording
@@ -282,7 +293,13 @@ class AppState: ObservableObject {
             hideWindowAfterDelay()
             return
         }
-        
+
+        // Live mode: real-time streaming transcription instead of record-then-upload.
+        if liveModeEnabled {
+            startLiveTranscription()
+            return
+        }
+
         // If we're showing a result, continue the conversation
         if case .showingResult = processingState {
             recordingMode = .askGPT // Stay in Ask GPT mode
@@ -317,6 +334,10 @@ class AppState: ObservableObject {
     }
     
     func stopRecordingAndProcess() async {
+        if isLiveTranscribing {
+            await stopLiveTranscriptionAndPaste()
+            return
+        }
         isRecording = false
         let currentMode = recordingMode
         
@@ -575,6 +596,12 @@ class AppState: ObservableObject {
     }
     
     func cancelRecording() {
+        if isLiveTranscribing, let transcriber = liveTranscriber {
+            isLiveTranscribing = false
+            liveTranscriber = nil
+            liveTranscript = ""
+            Task { _ = await transcriber.stop() }
+        }
         audioRecorder.stopRecording()
         isRecording = false
         processingState = .idle
@@ -588,6 +615,81 @@ class AppState: ObservableObject {
         previousApp = nil
     }
     
+    // MARK: - Live Transcription
+
+    /// Start real-time streaming transcription using the selected engine (cloud
+    /// OpenAI Realtime or on-device WhisperKit). Partial text streams into
+    /// `liveTranscript`; the final text is pasted on stop.
+    func startLiveTranscription() {
+        previousApp = NSWorkspace.shared.frontmostApplication
+        liveTranscript = ""
+        let language = whisperLanguage == "auto" ? nil : whisperLanguage
+
+        let transcriber: LiveTranscriber
+        switch liveEngine {
+        case .cloud: transcriber = OpenAIRealtimeLiveTranscriber(language: language)
+        case .local: transcriber = WhisperKitLiveTranscriber(language: language)
+        }
+        transcriber.onPartial = { [weak self] text in
+            self?.liveTranscript = text
+        }
+        transcriber.onError = { [weak self] error in
+            guard let self else { return }
+            self.isRecording = false
+            self.isLiveTranscribing = false
+            self.liveTranscriber = nil
+            self.processingState = .error(error.localizedDescription)
+            self.hideWindowAfterDelay()
+        }
+        liveTranscriber = transcriber
+
+        isRecording = true
+        isLiveTranscribing = true
+        processingState = .recording
+        RecordingWindowController.shared.showWindow()
+
+        Task {
+            do {
+                try await transcriber.start()
+            } catch {
+                self.isRecording = false
+                self.isLiveTranscribing = false
+                self.liveTranscriber = nil
+                self.processingState = .error(error.localizedDescription)
+                self.hideWindowAfterDelay()
+            }
+        }
+    }
+
+    /// Stop live streaming and paste the final transcript (same handling as a
+    /// finished Transcribe-mode result).
+    private func stopLiveTranscriptionAndPaste() async {
+        guard let transcriber = liveTranscriber else {
+            isLiveTranscribing = false
+            isRecording = false
+            return
+        }
+        isRecording = false
+        isLiveTranscribing = false
+        processingState = .transcribing
+
+        let finalText = await transcriber.stop()
+        liveTranscriber = nil
+        liveTranscript = ""
+
+        guard !finalText.isEmpty else {
+            processingState = .idle
+            RecordingWindowController.shared.hideWindow()
+            if let app = previousApp { app.activate(options: [.activateIgnoringOtherApps]) }
+            previousApp = nil
+            return
+        }
+
+        lastTranscription = finalText
+        lastProcessedText = finalText
+        await handleResult(finalText, forMode: .transcribe)
+    }
+
     /// Apply terminology correction using GPT
     private func applyTerminologyCorrection(_ text: String) async throws -> String {
         let termsList = customTerminology.joined(separator: ", ")

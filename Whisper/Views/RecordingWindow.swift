@@ -365,7 +365,22 @@ struct RecordingOverlayView: View {
                 .font(.system(size: 13))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-            
+
+            // Live partial transcript (real-time mode)
+            if appState.isLiveTranscribing && !appState.liveTranscript.isEmpty {
+                ScrollView {
+                    Text(appState.liveTranscript)
+                        .font(.system(size: 14))
+                        .foregroundColor(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 120)
+                .padding(8)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                .cornerRadius(8)
+            }
+
             // Controls during recording
             if appState.isRecording {
                 VStack(spacing: 8) {

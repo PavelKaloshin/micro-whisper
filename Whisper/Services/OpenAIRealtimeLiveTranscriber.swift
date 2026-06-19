@@ -1,0 +1,179 @@
+import Foundation
+import AVFoundation
+
+/// Cloud live transcription via OpenAI's Realtime transcription API. Captures the
+/// microphone with `AVAudioEngine`, converts to 24 kHz mono PCM16, and streams it
+/// over a WebSocket (`wss://api.openai.com/v1/realtime?intent=transcription`),
+/// receiving incremental `…input_audio_transcription.delta` / `.completed` events.
+@MainActor
+final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
+    var onPartial: ((String) -> Void)?
+    var onError: ((Error) -> Void)?
+
+    private let model: String
+    private let language: String?
+    private let apiKeyProvider: () -> String?
+
+    private let engine = AVAudioEngine()
+    // Accessed from both the main actor and the audio render thread / send path.
+    // We serialize use in practice (set on start, read in the tap/send, cleared on
+    // stop), so opt out of actor isolation rather than hop on every audio buffer.
+    nonisolated(unsafe) private var converter: AVAudioConverter?
+    nonisolated(unsafe) private var webSocket: URLSessionWebSocketTask?
+
+    private var confirmed = ""   // text from .completed events
+    private var pending = ""     // current in-progress deltas
+
+    private let targetFormat = AVAudioFormat(
+        commonFormat: .pcmFormatInt16, sampleRate: 24000, channels: 1, interleaved: true
+    )!
+
+    /// - Parameters:
+    ///   - model: transcription model (default `gpt-4o-transcribe`).
+    ///   - language: ISO-639-1 hint, or nil for auto-detect.
+    init(model: String = "gpt-4o-transcribe",
+         language: String? = nil,
+         apiKeyProvider: @escaping () -> String? = { KeychainService.shared.getAPIKey() }) {
+        self.model = model
+        self.language = language
+        self.apiKeyProvider = apiKeyProvider
+    }
+
+    func start() async throws {
+        guard let key = apiKeyProvider() else { throw LiveTranscriptionError.noAPIKey }
+
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .denied, .restricted: throw LiveTranscriptionError.microphonePermissionDenied
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { _ in }
+            throw LiveTranscriptionError.microphonePermissionDenied
+        default: break
+        }
+
+        var request = URLRequest(url: URL(string: "wss://api.openai.com/v1/realtime?intent=transcription")!)
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
+        let ws = URLSession.shared.webSocketTask(with: request)
+        webSocket = ws
+        ws.resume()
+
+        configureSession()
+        receiveLoop()
+        try startAudio()
+    }
+
+    func stop() async -> String {
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        send(["type": "input_audio_buffer.commit"])
+        webSocket?.cancel(with: .goingAway, reason: nil)
+        webSocket = nil
+        converter = nil
+        return (confirmed + pending).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Session
+
+    private func configureSession() {
+        var transcription: [String: Any] = ["model": model]
+        if let language { transcription["language"] = language }
+        send([
+            "type": "transcription_session.update",
+            "session": [
+                "input_audio_format": "pcm16",
+                "input_audio_transcription": transcription
+            ]
+        ])
+    }
+
+    // MARK: - Audio capture
+
+    private func startAudio() throws {
+        let input = engine.inputNode
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            throw LiveTranscriptionError.audioEngineFailed("could not create 24kHz PCM16 converter")
+        }
+        self.converter = converter
+
+        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            self?.sendAudio(buffer)
+        }
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            throw LiveTranscriptionError.audioEngineFailed(error.localizedDescription)
+        }
+    }
+
+    /// Runs on the audio render thread; converts and ships one buffer.
+    private nonisolated func sendAudio(_ buffer: AVAudioPCMBuffer) {
+        guard let converter = converter else { return }
+        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
+        guard let out = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
+
+        var consumed = false
+        var convError: NSError?
+        converter.convert(to: out, error: &convError) { _, status in
+            if consumed {
+                status.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            status.pointee = .haveData
+            return buffer
+        }
+        guard convError == nil, let channel = out.int16ChannelData, out.frameLength > 0 else { return }
+        let byteCount = Int(out.frameLength) * MemoryLayout<Int16>.size
+        let data = Data(bytes: channel[0], count: byteCount)
+        send(["type": "input_audio_buffer.append", "audio": data.base64EncodedString()])
+    }
+
+    // MARK: - WebSocket I/O
+
+    private nonisolated func send(_ object: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: object),
+              let string = String(data: data, encoding: .utf8) else { return }
+        webSocket?.send(.string(string)) { _ in }
+    }
+
+    private func receiveLoop() {
+        webSocket?.receive { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                switch result {
+                case .failure(let error):
+                    self.onError?(LiveTranscriptionError.connectionFailed(error.localizedDescription))
+                case .success(let message):
+                    if case .string(let text) = message { self.handleEvent(text) }
+                    self.receiveLoop()
+                }
+            }
+        }
+    }
+
+    private func handleEvent(_ text: String) {
+        guard let data = text.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = obj["type"] as? String else { return }
+
+        switch type {
+        case "conversation.item.input_audio_transcription.delta":
+            if let delta = obj["delta"] as? String {
+                pending += delta
+                onPartial?((confirmed + pending).trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        case "conversation.item.input_audio_transcription.completed":
+            confirmed += (obj["transcript"] as? String) ?? pending
+            pending = ""
+            onPartial?(confirmed.trimmingCharacters(in: .whitespacesAndNewlines))
+        case "error":
+            let message = (obj["error"] as? [String: Any])?["message"] as? String ?? "realtime transcription error"
+            onError?(LiveTranscriptionError.connectionFailed(message))
+        default:
+            break
+        }
+    }
+}

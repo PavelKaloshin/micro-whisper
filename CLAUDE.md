@@ -32,6 +32,10 @@ only safe, repetitive commands — take the trusted path instead of the raw one:
 - **Intentionally still prompting (don't try to route around them):** `find`
   (can `-exec`), `awk` (can `system()`), `sed -i`, `xargs`, `perl -i`, `rm`, raw
   `bash`/`python`/`node`, `curl`/`wget`. Prefer `grep` over `find`/`awk` for search.
+- **Inspecting dependency source (e.g. WhisperKit):** use the `Read` / `Grep` /
+  `Glob` tools — they never prompt — not Bash `find`/`sed`/`awk`. Get the SwiftPM
+  checkout dir with `make spm-path`, then Read/Grep under it (resolve packages
+  first with a normal `make build` if the dir is empty).
 
 When you add a `Makefile` target or wrapper, ask the user to lift the Makefile
 write-deny for that one edit, then restore it.

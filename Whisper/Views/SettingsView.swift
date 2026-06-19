@@ -80,8 +80,10 @@ struct SettingsView: View {
                 Toggle("Enable GPT post-processing", isOn: $appState.enableGPTProcessing)
                 
                 Picker("Model", selection: $appState.gptModel) {
-                    Text("GPT-4o Mini (Faster, Cheaper)").tag("gpt-4o-mini")
-                    Text("GPT-4o (Better Quality)").tag("gpt-4o")
+                    Text("GPT-5.4 Nano (Fastest, Cheapest)").tag("gpt-5.4-nano")
+                    Text("GPT-5.4 Mini (Recommended)").tag("gpt-5.4-mini")
+                    Text("GPT-5.4 (Better Quality)").tag("gpt-5.4")
+                    Text("GPT-5.5 (Best)").tag("gpt-5.5")
                 }
                 .disabled(!appState.enableGPTProcessing)
                 

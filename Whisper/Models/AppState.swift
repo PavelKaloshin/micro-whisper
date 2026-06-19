@@ -200,7 +200,7 @@ class AppState: ObservableObject {
     }
     
     // MARK: - Settings
-    @AppStorage("gptModel") var gptModel: String = "gpt-4o-mini"
+    @AppStorage("gptModel") var gptModel: String = "gpt-5.4-mini"
     @AppStorage("postProcessingPrompt") var postProcessingPrompt: String = "Fix grammar, punctuation, and formatting. Keep the original meaning and style. Return only the corrected text without explanations."
     @AppStorage("enableGPTProcessing") var enableGPTProcessing: Bool = true
     @AppStorage("whisperLanguage") var whisperLanguage: String = "auto" // "auto", "ru", "en", etc.

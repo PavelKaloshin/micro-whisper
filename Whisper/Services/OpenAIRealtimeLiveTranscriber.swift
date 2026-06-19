@@ -50,16 +50,48 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
         default: break
         }
 
+        openSocket(key: key)
+        configureSession()
+        receiveLoop()
+        try startAudio()
+    }
+
+    private func openSocket(key: String) {
         var request = URLRequest(url: URL(string: "wss://api.openai.com/v1/realtime?intent=transcription")!)
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
         let ws = URLSession.shared.webSocketTask(with: request)
         webSocket = ws
         ws.resume()
+    }
 
+    // MARK: - Test seam: drive from an audio file instead of the live mic
+
+    /// Connect + configure the session WITHOUT starting microphone capture.
+    /// Used by integration tests that feed audio from a fixture via `streamPCMFile`.
+    func startSessionOnly() throws {
+        guard let key = apiKeyProvider() else { throw LiveTranscriptionError.noAPIKey }
+        openSocket(key: key)
         configureSession()
         receiveLoop()
-        try startAudio()
+    }
+
+    /// Read an audio file, convert to 24kHz mono PCM16, stream it, and commit.
+    func streamPCMFile(_ url: URL) throws {
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)) else {
+            throw LiveTranscriptionError.audioEngineFailed("could not allocate read buffer")
+        }
+        try file.read(into: buffer)
+        guard let converter = AVAudioConverter(from: format, to: targetFormat) else {
+            throw LiveTranscriptionError.audioEngineFailed("could not create converter")
+        }
+        self.converter = converter
+        if let data = Self.pcm16Data(from: buffer, to: targetFormat, using: converter) {
+            send(["type": "input_audio_buffer.append", "audio": data.base64EncodedString()])
+        }
+        send(["type": "input_audio_buffer.commit"])
     }
 
     func stop() async -> String {
@@ -109,10 +141,19 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
 
     /// Runs on the audio render thread; converts and ships one buffer.
     private nonisolated func sendAudio(_ buffer: AVAudioPCMBuffer) {
-        guard let converter = converter else { return }
-        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
+        guard let converter = converter,
+              let data = Self.pcm16Data(from: buffer, to: targetFormat, using: converter) else { return }
+        send(["type": "input_audio_buffer.append", "audio": data.base64EncodedString()])
+    }
+
+    /// Pure conversion of an audio buffer to little-endian PCM16 bytes at the
+    /// target format. Factored out for unit testing (Layer 2).
+    nonisolated static func pcm16Data(from buffer: AVAudioPCMBuffer,
+                                      to target: AVAudioFormat,
+                                      using converter: AVAudioConverter) -> Data? {
+        let ratio = target.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
-        guard let out = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
+        guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
 
         var consumed = false
         var convError: NSError?
@@ -125,10 +166,8 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
             status.pointee = .haveData
             return buffer
         }
-        guard convError == nil, let channel = out.int16ChannelData, out.frameLength > 0 else { return }
-        let byteCount = Int(out.frameLength) * MemoryLayout<Int16>.size
-        let data = Data(bytes: channel[0], count: byteCount)
-        send(["type": "input_audio_buffer.append", "audio": data.base64EncodedString()])
+        guard convError == nil, let channel = out.int16ChannelData, out.frameLength > 0 else { return nil }
+        return Data(bytes: channel[0], count: Int(out.frameLength) * MemoryLayout<Int16>.size)
     }
 
     // MARK: - WebSocket I/O
@@ -155,25 +194,46 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     }
 
     private func handleEvent(_ text: String) {
+        switch Self.parseEvent(text) {
+        case .delta(let delta):
+            pending += delta
+            onPartial?((confirmed + pending).trimmingCharacters(in: .whitespacesAndNewlines))
+        case .completed(let transcript):
+            confirmed += transcript ?? pending
+            pending = ""
+            onPartial?(confirmed.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .failure(let message):
+            onError?(LiveTranscriptionError.connectionFailed(message))
+        case .ignored:
+            break
+        }
+    }
+
+    /// One decoded Realtime transcription event. Pure/`Equatable` for unit tests (Layer 1).
+    enum RealtimeEvent: Equatable {
+        case delta(String)
+        case completed(String?)   // `transcript` may be absent (fall back to accumulated deltas)
+        case failure(String)
+        case ignored
+    }
+
+    /// Pure parse of a Realtime server event JSON string. No side effects.
+    nonisolated static func parseEvent(_ text: String) -> RealtimeEvent {
         guard let data = text.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = obj["type"] as? String else { return }
+              let type = obj["type"] as? String else { return .ignored }
 
         switch type {
         case "conversation.item.input_audio_transcription.delta":
-            if let delta = obj["delta"] as? String {
-                pending += delta
-                onPartial?((confirmed + pending).trimmingCharacters(in: .whitespacesAndNewlines))
-            }
+            if let delta = obj["delta"] as? String { return .delta(delta) }
+            return .ignored
         case "conversation.item.input_audio_transcription.completed":
-            confirmed += (obj["transcript"] as? String) ?? pending
-            pending = ""
-            onPartial?(confirmed.trimmingCharacters(in: .whitespacesAndNewlines))
+            return .completed(obj["transcript"] as? String)
         case "error":
             let message = (obj["error"] as? [String: Any])?["message"] as? String ?? "realtime transcription error"
-            onError?(LiveTranscriptionError.connectionFailed(message))
+            return .failure(message)
         default:
-            break
+            return .ignored
         }
     }
 }

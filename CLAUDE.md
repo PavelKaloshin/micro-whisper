@@ -11,6 +11,7 @@ invocation is not allow-listed and will ask for approval every time.
 ```bash
 make            # or `make build` — Release build, code signing disabled (compile check)
 make run        # build, then launch Whisper.app
+make test       # run the unit + integration test suite (xcodebuild test, macOS)
 make clean      # remove the build/ directory
 ```
 

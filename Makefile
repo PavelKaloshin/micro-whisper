@@ -3,7 +3,7 @@
 # disabled, mirroring the CI release workflow (.github/workflows/release.yml).
 
 .DEFAULT_GOAL := build
-.PHONY: build run clean
+.PHONY: build run clean test
 
 PROJECT := Whisper.xcodeproj
 SCHEME := Whisper
@@ -27,3 +27,9 @@ run: build
 
 clean:
 	rm -rf $(DERIVED)
+
+test:
+		xcodebuild test -project $(PROJECT) -scheme $(SCHEME) \
+				-configuration Debug -derivedDataPath $(DERIVED) \
+				-destination 'platform=macOS' \
+				CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO

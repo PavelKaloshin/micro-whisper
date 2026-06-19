@@ -10,9 +10,22 @@ class KeychainService {
     private let account = "api-key"
     
     private init() {}
-    
+
+    /// In the test host, the app is an unsigned, freshly-built binary, so every
+    /// real Keychain access triggers a login-password prompt. Under XCTest we
+    /// swap in an in-memory store so tests never touch (or prompt for) the real
+    /// Keychain. Detected via the `XCTestConfigurationFilePath` env var that
+    /// xcodebuild sets in the test-host process.
+    private static let isRunningTests =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    private var inMemoryAPIKey: String?
+
     // MARK: - API Key Management
     func saveAPIKey(_ apiKey: String) -> Bool {
+        if Self.isRunningTests {
+            inMemoryAPIKey = apiKey
+            return true
+        }
         // First, try to delete any existing key
         deleteAPIKey()
         
@@ -41,6 +54,9 @@ class KeychainService {
     }
     
     func getAPIKey() -> String? {
+        if Self.isRunningTests {
+            return inMemoryAPIKey
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -63,6 +79,10 @@ class KeychainService {
     
     @discardableResult
     func deleteAPIKey() -> Bool {
+        if Self.isRunningTests {
+            inMemoryAPIKey = nil
+            return true
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

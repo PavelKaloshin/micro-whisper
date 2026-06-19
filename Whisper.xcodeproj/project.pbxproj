@@ -22,6 +22,7 @@
 		B1000001 /* StubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001 /* StubURLProtocol.swift */; };
 		B1000002 /* OpenAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002 /* OpenAIServiceTests.swift */; };
 		B1000003 /* ModeLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000003 /* ModeLogicTests.swift */; };
+		B1000004 /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000004 /* KeychainServiceTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		B2000001 /* StubURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubURLProtocol.swift; sourceTree = "<group>"; };
 		B2000002 /* OpenAIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIServiceTests.swift; sourceTree = "<group>"; };
 		B2000003 /* ModeLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeLogicTests.swift; sourceTree = "<group>"; };
+		B2000004 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -149,6 +151,7 @@
 			children = (
 				B2000002 /* OpenAIServiceTests.swift */,
 				B2000003 /* ModeLogicTests.swift */,
+				B2000004 /* KeychainServiceTests.swift */,
 				B2000001 /* StubURLProtocol.swift */,
 			);
 			path = WhisperTests;
@@ -270,6 +273,7 @@
 			files = (
 				B1000002 /* OpenAIServiceTests.swift in Sources */,
 				B1000003 /* ModeLogicTests.swift in Sources */,
+				B1000004 /* KeychainServiceTests.swift in Sources */,
 				B1000001 /* StubURLProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

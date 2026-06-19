@@ -19,6 +19,7 @@
 		A100000A /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = A300000A /* HotKey */; };
 		A100000B /* RecordingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* RecordingWindow.swift */; };
 		A100000C /* LaunchAtLoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D /* LaunchAtLoginService.swift */; };
+		A100000D /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = A300000B /* WhisperKit */; };
 		B1000001 /* StubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001 /* StubURLProtocol.swift */; };
 		B1000002 /* OpenAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002 /* OpenAIServiceTests.swift */; };
 		B1000003 /* ModeLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000003 /* ModeLogicTests.swift */; };
@@ -53,6 +54,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A100000A /* HotKey in Frameworks */,
+				A100000D /* WhisperKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -175,6 +177,7 @@
 			name = Whisper;
 			packageProductDependencies = (
 				A300000A /* HotKey */,
+				A300000B /* WhisperKit */,
 			);
 			productName = Whisper;
 			productReference = A2000000 /* Whisper.app */;
@@ -227,6 +230,7 @@
 			mainGroup = A5000000;
 			packageReferences = (
 				A3000001 /* XCRemoteSwiftPackageReference "HotKey" */,
+				A3000002 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 			);
 			productRefGroup = A5000005 /* Products */;
 			projectDirPath = "";
@@ -532,6 +536,14 @@
 				minimumVersion = 0.2.0;
 			};
 		};
+		A3000002 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -539,6 +551,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A3000001 /* XCRemoteSwiftPackageReference "HotKey" */;
 			productName = HotKey;
+		};
+		A300000B /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A3000002 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = WhisperKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

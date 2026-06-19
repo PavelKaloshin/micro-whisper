@@ -19,6 +19,23 @@ The `Makefile` is the single source of truth for the build command (it mirrors t
 release workflow). Do not hand-roll `xcodebuild` invocations. Note: editing the
 `Makefile` is denied in `.claude/settings.json` — change build flags by asking the user.
 
+## Command permissions (avoid fighting the prompts)
+
+To keep the approval surface small and safe, `.claude/settings.json` pre-allows
+only safe, repetitive commands — take the trusted path instead of the raw one:
+
+- **Build / test:** use `make` (`make build`, `make test`, `make run`, `make clean`).
+  Direct `xcodebuild …` is intentionally *not* auto-approved; the `Makefile` is the
+  trusted surface (and is write-denied so it can't be silently widened).
+- **Allowed read-only:** `grep`, `ls`, `cat`, `plutil -lint`, and read-only git
+  (`status`, `diff`, `log`, `show`, `branch`, `rev-parse`).
+- **Intentionally still prompting (don't try to route around them):** `find`
+  (can `-exec`), `awk` (can `system()`), `sed -i`, `xargs`, `perl -i`, `rm`, raw
+  `bash`/`python`/`node`, `curl`/`wget`. Prefer `grep` over `find`/`awk` for search.
+
+When you add a `Makefile` target or wrapper, ask the user to lift the Makefile
+write-deny for that one edit, then restore it.
+
 ## Project notes
 
 - macOS menu-bar app (Swift 5, SwiftUI + AppKit). Single Xcode target `Whisper`.

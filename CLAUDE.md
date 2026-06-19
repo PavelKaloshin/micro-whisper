@@ -32,10 +32,19 @@ only safe, repetitive commands — take the trusted path instead of the raw one:
 - **Intentionally still prompting (don't try to route around them):** `find`
   (can `-exec`), `awk` (can `system()`), `sed -i`, `xargs`, `perl -i`, `rm`, raw
   `bash`/`python`/`node`, `curl`/`wget`. Prefer `grep` over `find`/`awk` for search.
-- **Inspecting dependency source (e.g. WhisperKit):** use the `Read` / `Grep` /
-  `Glob` tools — they never prompt — not Bash `find`/`sed`/`awk`. Get the SwiftPM
-  checkout dir with `make spm-path`, then Read/Grep under it (resolve packages
-  first with a normal `make build` if the dir is empty).
+- **Inspecting dependency source (e.g. WhisperKit):** use the `Read` tool plus the
+  allowed `grep`/`ls` (Bash) — not `find`/`sed`/`awk`. Get the SwiftPM checkout dir
+  with `make spm-path`, then Read/grep under it (resolve packages first with a
+  normal `make build` if the dir is empty). (The standalone Grep/Glob tools may not
+  be present; `grep`/`ls` via Bash are allow-listed.)
+- **Don't chain commands.** Allow rules are prefix-matched on the whole command
+  string, so compounds (`a && b`, `a; b`, pipes, `echo`, output redirects) do NOT
+  match and force a prompt — even when each part is individually allowed. Run one
+  allowed command per call (e.g. `git add -A` then `git commit …` as two calls,
+  not `git add … && git commit …`). To capture noisy build/test output, run a
+  single `make build > /tmp/whisper-build.log 2>&1` (still matches `make:*`) and
+  then read `/tmp/whisper-build.log` with the `Read` tool or a single allowed
+  `grep` (not a `make … | grep` pipe, which would prompt).
 
 When you add a `Makefile` target or wrapper, ask the user to lift the Makefile
 write-deny for that one edit, then restore it.

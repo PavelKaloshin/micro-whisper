@@ -18,6 +18,9 @@ protocol LiveTranscriber: AnyObject {
     var onPartial: ((String) -> Void)? { get set }
     /// Called if the backend fails mid-stream.
     var onError: ((Error) -> Void)? { get set }
+    /// Called with a normalized (0...1) input level for a live mic meter, if the
+    /// backend captures audio it can measure. Optional — backends may never call it.
+    var onAudioLevel: ((Float) -> Void)? { get set }
 
     /// Begin capturing and streaming. Throws if setup fails (mic permission,
     /// model download, network, missing API key).

@@ -333,10 +333,78 @@ struct RecordingOverlayView: View {
         Group {
             if case .showingResult(let text) = appState.processingState {
                 ResultView(text: text)
+            } else if appState.isLiveTranscribing {
+                liveView
             } else {
                 recordingView
             }
         }
+    }
+
+    // MARK: - Live (real-time) view
+
+    /// Shown while live transcription streams: a prominent, auto-scrolling
+    /// transcript with a lively "listening" indicator. The final text is pasted
+    /// only after you stop (handled in AppState), so this is purely a live preview.
+    private var liveView: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 8) {
+                LivePulse()
+                Text("Listening…")
+                    .font(.system(size: 16, weight: .semibold))
+                Spacer()
+                Text(appState.liveEngine.shortName)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.gray.opacity(0.2)))
+            }
+
+            AudioBars(level: appState.audioLevel)
+                .frame(height: 24)
+
+            // Streaming transcript
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(appState.liveTranscript.isEmpty
+                         ? "Speak now — your words will appear here as you talk."
+                         : appState.liveTranscript)
+                        .font(.system(size: 16))
+                        .foregroundColor(appState.liveTranscript.isEmpty ? .secondary : .primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(2)
+                        .id("liveEnd")
+                }
+                .onChange(of: appState.liveTranscript) { _ in
+                    withAnimation { proxy.scrollTo("liveEnd", anchor: .bottom) }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            )
+
+            Text("🌐🌐 / \(currentHotkeyDisplayString()) — finish & paste • Esc — cancel")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+        .padding(20)
+        .frame(width: 380, height: 440)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.3), radius: 30, x: 0, y: 15)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(Color.green, lineWidth: 3)
+        )
+        .overlay(alignment: .topLeading) { devBadge }
+        .overlay(alignment: .topTrailing) { menuButton }
     }
     
     private var recordingView: some View {
@@ -601,6 +669,24 @@ struct RecordingOverlayView: View {
         case .error(let msg):
             return msg
         }
+    }
+}
+
+// MARK: - Live "listening" indicator
+
+/// A continuously pulsing red dot — animates on its own (independent of audio)
+/// so the live view never looks frozen, even between spoken words.
+struct LivePulse: View {
+    @State private var animating = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 12, height: 12)
+            .scaleEffect(animating ? 1.0 : 0.6)
+            .opacity(animating ? 1.0 : 0.4)
+            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: animating)
+            .onAppear { animating = true }
     }
 }
 

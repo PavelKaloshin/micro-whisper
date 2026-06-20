@@ -639,8 +639,12 @@ class AppState: ObservableObject {
         case .cloud: transcriber = OpenAIRealtimeLiveTranscriber(language: language)
         case .local: transcriber = WhisperKitLiveTranscriber(language: language)
         }
+        audioLevel = 0
         transcriber.onPartial = { [weak self] text in
             self?.liveTranscript = text
+        }
+        transcriber.onAudioLevel = { [weak self] level in
+            self?.audioLevel = level
         }
         transcriber.onError = { [weak self] error in
             guard let self else { return }

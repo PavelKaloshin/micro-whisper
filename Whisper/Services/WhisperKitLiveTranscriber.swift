@@ -9,6 +9,7 @@ import WhisperKit
 final class WhisperKitLiveTranscriber: LiveTranscriber {
     var onPartial: ((String) -> Void)?
     var onError: ((Error) -> Void)?
+    var onAudioLevel: ((Float) -> Void)?
 
     private let modelName: String
     private let language: String?

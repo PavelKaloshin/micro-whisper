@@ -9,6 +9,7 @@ import AVFoundation
 final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     var onPartial: ((String) -> Void)?
     var onError: ((Error) -> Void)?
+    var onAudioLevel: ((Float) -> Void)?
 
     private let model: String
     private let language: String?
@@ -149,6 +150,9 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
 
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             self?.sendAudio(buffer)
+            // Drive the live mic meter from the captured audio.
+            let level = Self.rmsLevel(from: buffer)
+            Task { @MainActor in self?.onAudioLevel?(level) }
         }
         engine.prepare()
         do {
@@ -164,6 +168,18 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
         guard let converter = converter,
               let data = Self.pcm16Data(from: buffer, to: targetFormat, using: converter) else { return }
         send(["type": "input_audio_buffer.append", "audio": data.base64EncodedString()])
+    }
+
+    /// Normalized (0...1) RMS level of a captured buffer, for the live mic meter.
+    nonisolated static func rmsLevel(from buffer: AVAudioPCMBuffer) -> Float {
+        guard let channel = buffer.floatChannelData, buffer.frameLength > 0 else { return 0 }
+        let frames = Int(buffer.frameLength)
+        let samples = channel[0]
+        var sumSquares: Float = 0
+        for i in 0..<frames { sumSquares += samples[i] * samples[i] }
+        let rms = (sumSquares / Float(frames)).squareRoot()
+        // Speech RMS sits roughly in 0.02...0.2; scale up and clamp for a lively meter.
+        return min(1, rms * 8)
     }
 
     /// Pure conversion of an audio buffer to little-endian PCM16 bytes at the

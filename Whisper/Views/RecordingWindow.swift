@@ -353,6 +353,15 @@ struct RecordingOverlayView: View {
                 Text(appState.isPreparingLive ? "Loading model…" : "Listening…")
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
+                if appState.whisperLanguage != "auto" {
+                    Text("→ \(appState.whisperLanguage.uppercased())")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.blue))
+                        .help("Output will be translated to this language")
+                }
                 Text(appState.liveEngine.shortName)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
@@ -1323,16 +1332,10 @@ class RecordingWindowController: NSObject {
                 }
                 
                 // Language selection: 0 = auto, 1 = English, 2 = Russian.
-                // In live mode this restarts the stream with the new language
-                // (preserving text so far); otherwise it just sets the preference.
+                // In live mode this is the OUTPUT language (applied as a translation
+                // on stop); in the classic flow it's the Whisper transcription hint.
                 func setLanguage(_ code: String) {
-                    Task { @MainActor in
-                        if AppState.shared.isLiveTranscribing {
-                            AppState.shared.changeLiveLanguage(to: code)
-                        } else {
-                            AppState.shared.whisperLanguage = code
-                        }
-                    }
+                    Task { @MainActor in AppState.shared.whisperLanguage = code }
                 }
                 if event.keyCode == 29 { setLanguage("auto"); return nil } // 0
                 if event.keyCode == 18 { setLanguage("en"); return nil }   // 1

@@ -185,9 +185,6 @@ class AppState: ObservableObject {
     @Published var liveTranscript: String = ""   // live partial transcript shown while streaming
     @Published var isLiveTranscribing: Bool = false
     @Published var isPreparingLive: Bool = false  // loading the local model before streaming begins
-    // Text transcribed before a mid-stream language switch; the restarted session
-    // appends to this so switching language doesn't lose what was already said.
-    private var liveCommittedPrefix: String = ""
     
     enum ClipboardContent {
         case empty
@@ -222,6 +219,8 @@ class AppState: ObservableObject {
     @AppStorage("globeKeyDoublePressOnly") var globeKeyDoublePressOnly: Bool = false
     @AppStorage("liveModeEnabled") var liveModeEnabled: Bool = false
     @AppStorage("liveTranscriptionEngine") var liveEngineRaw: String = "cloud"
+    @AppStorage("liveCloudModel") var liveCloudModel: String = "gpt-4o-transcribe"
+    @AppStorage("liveLocalModel") var liveLocalModel: String = "base"
 
     /// Selected live backend, backed by `liveEngineRaw` (@AppStorage stores the raw value).
     var liveEngine: LiveTranscriptionEngine {
@@ -614,7 +613,6 @@ class AppState: ObservableObject {
             isPreparingLive = false
             liveTranscriber = nil
             liveTranscript = ""
-            liveCommittedPrefix = ""
             Task { _ = await transcriber.stop() }
         }
         audioRecorder.stopRecording()
@@ -637,7 +635,6 @@ class AppState: ObservableObject {
     /// `liveTranscript`; the final text is pasted on stop.
     func startLiveTranscription() {
         previousApp = NSWorkspace.shared.frontmostApplication
-        liveCommittedPrefix = ""
         liveTranscript = ""
         isRecording = true
         isLiveTranscribing = true
@@ -646,28 +643,19 @@ class AppState: ObservableObject {
         startLiveSession()
     }
 
-    /// Combine the committed prefix (text from before a language switch) with the
-    /// current session's streaming text.
-    private func composeLive(_ sessionText: String) -> String {
-        if liveCommittedPrefix.isEmpty { return sessionText }
-        if sessionText.isEmpty { return liveCommittedPrefix }
-        return liveCommittedPrefix + " " + sessionText
-    }
-
-    /// Spin up a fresh transcriber for the current `liveEngine`/`whisperLanguage`.
-    /// Used both for the initial start and when restarting after a language switch.
+    /// Spin up a fresh transcriber for the current engine. Transcription always
+    /// auto-detects the spoken language for accuracy; the LANGUAGE selection is the
+    /// *output* language, applied as a translation step on stop (see
+    /// `stopLiveTranscriptionAndPaste`).
     private func startLiveSession() {
-        let language = whisperLanguage == "auto" ? nil : whisperLanguage
-
         let transcriber: LiveTranscriber
         switch liveEngine {
-        case .cloud: transcriber = OpenAIRealtimeLiveTranscriber(language: language)
-        case .local: transcriber = WhisperKitLiveTranscriber(language: language)
+        case .cloud: transcriber = OpenAIRealtimeLiveTranscriber(model: liveCloudModel, language: nil)
+        case .local: transcriber = WhisperKitLiveTranscriber(model: liveLocalModel, language: nil)
         }
         audioLevel = 0
         transcriber.onPartial = { [weak self] text in
-            guard let self else { return }
-            self.liveTranscript = self.composeLive(text)
+            self?.liveTranscript = text
         }
         transcriber.onAudioLevel = { [weak self] level in
             self?.audioLevel = level
@@ -684,7 +672,7 @@ class AppState: ObservableObject {
         liveTranscriber = transcriber
 
         // Only show the loading indicator when the local model isn't warm yet.
-        isPreparingLive = (liveEngine == .local) && !WhisperKitLiveTranscriber.isModelCached("base")
+        isPreparingLive = (liveEngine == .local) && !WhisperKitLiveTranscriber.isModelCached(liveLocalModel)
 
         Task {
             do {
@@ -701,24 +689,8 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Switch the dictation language mid-stream. Restarts the live session with the
-    /// new language, preserving the text transcribed so far as a committed prefix.
-    /// Pass "auto" to let the engine auto-detect the spoken language.
-    func changeLiveLanguage(to code: String) {
-        whisperLanguage = code
-        guard isLiveTranscribing, let current = liveTranscriber else { return }
-        liveCommittedPrefix = liveTranscript
-        liveTranscriber = nil
-        audioLevel = 0
-        Task {
-            _ = await current.stop()
-            guard self.isLiveTranscribing else { return }
-            self.startLiveSession()
-        }
-    }
-
-    /// Stop live streaming and paste the final transcript (same handling as a
-    /// finished Transcribe-mode result).
+    /// Stop live streaming and paste the final text. If an output language is set
+    /// (LANGUAGE != Auto), the transcript is translated into it first.
     private func stopLiveTranscriptionAndPaste() async {
         guard let transcriber = liveTranscriber else {
             isLiveTranscribing = false
@@ -730,10 +702,9 @@ class AppState: ObservableObject {
         isPreparingLive = false
         processingState = .transcribing
 
-        let finalText = composeLive(await transcriber.stop())
+        var finalText = await transcriber.stop()
         liveTranscriber = nil
         liveTranscript = ""
-        liveCommittedPrefix = ""
 
         guard !finalText.isEmpty else {
             processingState = .idle
@@ -743,9 +714,37 @@ class AppState: ObservableObject {
             return
         }
 
+        // Output language: translate into the selected language unless Auto.
+        if whisperLanguage != "auto" {
+            processingState = .processing
+            if let translated = try? await translate(finalText, to: whisperLanguage) {
+                finalText = translated
+            }
+        }
+
         lastTranscription = finalText
         lastProcessedText = finalText
         await handleResult(finalText, forMode: .transcribe)
+    }
+
+    /// Translate text into the given language code via GPT (used as the live
+    /// "output language" step). Returns the translation, or rethrows on failure.
+    private func translate(_ text: String, to code: String) async throws -> String {
+        let name = Self.languageName(for: code)
+        let prompt = """
+        Translate the following text into \(name). Preserve the meaning, tone, and any
+        formatting. Return only the translation, with no explanations or quotes.
+        """
+        return try await openAIService.postProcess(text: text, prompt: prompt, model: gptModel)
+    }
+
+    /// Human-readable language name for a stored language code.
+    static func languageName(for code: String) -> String {
+        switch code {
+        case "en": return "English"
+        case "ru": return "Russian"
+        default: return code
+        }
     }
 
     /// Apply terminology correction using GPT

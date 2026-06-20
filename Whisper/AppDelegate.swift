@@ -35,7 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // up now so the first session doesn't stall for a few seconds.
         Task { @MainActor in
             if AppState.shared.liveModeEnabled && AppState.shared.liveEngine == .local {
-                WhisperKitLiveTranscriber.prewarm()
+                WhisperKitLiveTranscriber.prewarm(model: AppState.shared.liveLocalModel)
             }
         }
 

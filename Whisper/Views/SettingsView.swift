@@ -71,7 +71,22 @@ struct SettingsView: View {
                 }
                 .disabled(!appState.liveModeEnabled)
 
-                Text("When on, the record hotkey streams text live as you speak. Cloud uses OpenAI's Realtime API; Local runs WhisperKit on-device (downloads a model on first use; requires macOS 15+).")
+                if appState.liveEngine == .cloud {
+                    Picker("Cloud model", selection: $appState.liveCloudModel) {
+                        Text("GPT-4o Transcribe (Best)").tag("gpt-4o-transcribe")
+                        Text("GPT-4o mini Transcribe (Faster, cheaper)").tag("gpt-4o-mini-transcribe")
+                    }
+                    .disabled(!appState.liveModeEnabled)
+                } else {
+                    Picker("Local model", selection: $appState.liveLocalModel) {
+                        Text("Tiny (Fastest, lowest quality)").tag("tiny")
+                        Text("Base (Recommended)").tag("base")
+                        Text("Small (Slower, better quality)").tag("small")
+                    }
+                    .disabled(!appState.liveModeEnabled)
+                }
+
+                Text("When on, the record hotkey streams text live as you speak. Cloud uses OpenAI's Realtime API; Local runs WhisperKit on-device (downloads the model on first use; requires macOS 15+). The LANGUAGE keys (0/1/2) set the output language — non-Auto translates the result on stop.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

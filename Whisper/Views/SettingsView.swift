@@ -78,6 +78,10 @@ struct SettingsView: View {
                         Text("GPT-4o mini Transcribe (Faster, cheaper)").tag("gpt-4o-mini-transcribe")
                     }
                     .disabled(!appState.liveModeEnabled)
+
+                    Text("Used for transcription (LANGUAGE = Auto). With a non-Auto output language, translation is handled live by gpt-realtime-translate instead.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 } else {
                     Picker("Local model", selection: $appState.liveLocalModel) {
                         Text("Tiny (Fastest, lowest quality)").tag("tiny")

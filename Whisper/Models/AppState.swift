@@ -2,6 +2,15 @@ import Foundation
 import SwiftUI
 import Combine
 
+/// Identifies the running build so the UI can visibly flag the dev build
+/// ("Whisper Dev", com.whisper.app.dev) distinctly from the shipping build
+/// ("Whisper", com.whisper.app) — useful when both run side by side.
+enum AppEnvironment {
+    static var isDev: Bool { Bundle.main.bundleIdentifier == "com.whisper.app.dev" }
+    /// Short badge to show in the UI, or nil for the shipping build.
+    static var badge: String? { isDev ? "DEV" : nil }
+}
+
 enum ProcessingState: Equatable {
     case idle
     case recording

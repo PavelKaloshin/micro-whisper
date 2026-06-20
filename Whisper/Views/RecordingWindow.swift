@@ -495,8 +495,37 @@ struct RecordingOverlayView: View {
                     lineWidth: appState.recordingMode == .askGPT ? 0 : 3
                 )
         )
+        .overlay(alignment: .topLeading) { devBadge }
+        .overlay(alignment: .topTrailing) { menuButton }
     }
-    
+
+    /// "DEV" pill shown only in the dev build, so it's obvious which app this is.
+    @ViewBuilder
+    private var devBadge: some View {
+        if let badge = AppEnvironment.badge {
+            Text(badge)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.orange))
+                .padding(12)
+        }
+    }
+
+    /// Quick access to Settings from the popup, since the menu-bar icon can be
+    /// hard to find (especially with two Whisper builds running).
+    private var menuButton: some View {
+        Button(action: { AppDelegate.shared?.openSettings() }) {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .padding(12)
+        .help("Open Settings")
+    }
+
     /// Border color based on output mode
     private var outputBorderColor: Color {
         if appState.recordingMode == .askGPT {

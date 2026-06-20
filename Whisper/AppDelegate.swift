@@ -11,6 +11,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var globalEventMonitor: Any?
     private var lastGlobeKeyTime: Date?
+
+    // Menu items whose titles/state we refresh each time the menu opens.
+    private var statusMenuItem: NSMenuItem?
+    private var recordMenuItem: NSMenuItem?
+    private var liveMenuItem: NSMenuItem?
     
     override init() {
         super.init()
@@ -56,33 +61,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Whisper")
             button.image?.isTemplate = true
+            // Make the dev build visibly distinct in the menu bar (and findable when
+            // it sits next to the shipping Whisper's identical icon).
+            if AppEnvironment.isDev {
+                button.title = " DEV"
+                button.imagePosition = .imageLeading
+            }
             debugLog("button configured with image")
         }
-        
+
         // Create menu
         let menu = NSMenu()
-        
+        menu.delegate = self
+
         let statusMenuItem = NSMenuItem(title: "Ready", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
-        
+        self.statusMenuItem = statusMenuItem
+
         menu.addItem(NSMenuItem.separator())
-        
+
         let recordItem = NSMenuItem(title: "Start Recording", action: #selector(toggleRecordingMenu), keyEquivalent: "")
         recordItem.target = self
         menu.addItem(recordItem)
-        
+        self.recordMenuItem = recordItem
+
+        let liveItem = NSMenuItem(title: "Live Transcription", action: #selector(toggleLiveMode), keyEquivalent: "")
+        liveItem.target = self
+        menu.addItem(liveItem)
+        self.liveMenuItem = liveItem
+
         menu.addItem(NSMenuItem.separator())
-        
+
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
-        
+
         menu.addItem(NSMenuItem.separator())
-        
+
         let quitItem = NSMenuItem(title: "Quit Whisper", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
-        
+
         item.menu = menu
         statusItem = item
         debugLog("setupStatusBar completed with menu")
@@ -91,6 +110,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleRecordingMenu() {
         Task { @MainActor in
             await Self.toggleRecording()
+        }
+    }
+
+    @objc func toggleLiveMode() {
+        Task { @MainActor in
+            AppState.shared.liveModeEnabled.toggle()
         }
     }
     
@@ -123,7 +148,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let hostingController = NSHostingController(rootView: settingsView)
             
             let window = NSWindow(contentViewController: hostingController)
-            window.title = "Whisper Settings"
+            window.title = AppEnvironment.isDev ? "Whisper Dev Settings" : "Whisper Settings"
             window.styleMask = [.titled, .closable]
             window.setContentSize(NSSize(width: 500, height: 450))
             window.center()
@@ -240,6 +265,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 await Self.toggleRecording()
             }
+        }
+    }
+}
+
+extension AppDelegate: NSMenuDelegate {
+    /// Refresh the dynamic menu items (status text, record label, live-mode
+    /// checkmark) just before the menu is shown. Menu delegate callbacks run on
+    /// the main thread, so AppState's @MainActor state is safe to read here.
+    func menuWillOpen(_ menu: NSMenu) {
+        MainActor.assumeIsolated {
+            let state = AppState.shared
+            statusMenuItem?.title = state.statusText
+            recordMenuItem?.title = state.isRecording ? "Stop Recording" : "Start Recording"
+            liveMenuItem?.state = state.liveModeEnabled ? .on : .off
+            liveMenuItem?.title = state.liveModeEnabled
+                ? "Live Transcription (\(state.liveEngine.displayName))"
+                : "Live Transcription"
         }
     }
 }

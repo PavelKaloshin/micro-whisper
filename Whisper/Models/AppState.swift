@@ -185,6 +185,9 @@ class AppState: ObservableObject {
     @Published var liveTranscript: String = ""   // live partial transcript shown while streaming
     @Published var isLiveTranscribing: Bool = false
     @Published var isPreparingLive: Bool = false  // loading the local model before streaming begins
+    // True when the live stream already returns target-language text (cloud
+    // gpt-realtime-translate), so no separate translation step runs on stop.
+    private var liveAlreadyTranslated = false
     
     enum ClipboardContent {
         case empty
@@ -651,10 +654,23 @@ class AppState: ObservableObject {
     /// *output* language, applied as a translation step on stop (see
     /// `stopLiveTranscriptionAndPaste`).
     private func startLiveSession() {
+        let target = whisperLanguage == "auto" ? nil : whisperLanguage
+        liveAlreadyTranslated = false
+
         let transcriber: LiveTranscriber
         switch liveEngine {
-        case .cloud: transcriber = OpenAIRealtimeLiveTranscriber(model: liveCloudModel, language: nil)
-        case .local: transcriber = WhisperKitLiveTranscriber(model: liveLocalModel, language: nil)
+        case .cloud:
+            // With a target language and the cloud post-processing engine, translate
+            // live via gpt-realtime-translate (text arrives already translated).
+            // Otherwise transcribe and translate on stop (e.g. local Apple engine).
+            if let target, postProcessingEngine == .cloud {
+                transcriber = OpenAIRealtimeLiveTranscriber(model: "gpt-realtime-translate", language: nil, translateTo: target)
+                liveAlreadyTranslated = true
+            } else {
+                transcriber = OpenAIRealtimeLiveTranscriber(model: liveCloudModel, language: nil)
+            }
+        case .local:
+            transcriber = WhisperKitLiveTranscriber(model: liveLocalModel, language: nil)
         }
         audioLevel = 0
         transcriber.onPartial = { [weak self] text in
@@ -717,8 +733,9 @@ class AppState: ObservableObject {
             return
         }
 
-        // Output language: translate into the selected language unless Auto.
-        if whisperLanguage != "auto" {
+        // Output language: translate into the selected language unless Auto or the
+        // live stream already produced translated text (gpt-realtime-translate).
+        if whisperLanguage != "auto" && !liveAlreadyTranslated {
             processingState = .processing
             if let translated = try? await translate(finalText, to: whisperLanguage) {
                 finalText = translated

@@ -42,6 +42,41 @@ final class RealtimeIntegrationTests: XCTestCase {
         print("Realtime transcript: final=\(final) latest=\(latest)")
     }
 
+    func testTranslatesFixtureToRussian() async throws {
+        let env = ProcessInfo.processInfo.environment
+        try XCTSkipUnless(env["RUN_REALTIME_TESTS"] == "1", "Set RUN_REALTIME_TESTS=1 to run.")
+        let key = try XCTUnwrap(env["OPENAI_API_KEY"], "Set OPENAI_API_KEY to run.")
+        let url = try fixtureURL("hello_en.wav")
+
+        let transcriber = OpenAIRealtimeLiveTranscriber(
+            model: "gpt-realtime-translate",
+            language: nil,
+            translateTo: "ru",
+            apiKeyProvider: { key }
+        )
+        var latest = ""
+        transcriber.onPartial = { latest = $0 }
+        var transcriberError: String?
+        transcriber.onError = { transcriberError = $0.localizedDescription }
+
+        try transcriber.startSessionOnly()
+        try transcriber.streamPCMFile(url)
+        try await Task.sleep(nanoseconds: 8_000_000_000)
+        let final = await transcriber.stop()
+
+        XCTAssertFalse(
+            final.isEmpty && latest.isEmpty,
+            "expected translated text from gpt-realtime-translate; error: \(transcriberError ?? "none")"
+        )
+        // The English fixture should come back containing Cyrillic characters.
+        let text = final.isEmpty ? latest : final
+        XCTAssertTrue(
+            text.contains(where: { $0.unicodeScalars.contains { CharacterSet(charactersIn: "А"..."я").contains($0) } }),
+            "expected Cyrillic (Russian) output, got: \(text)"
+        )
+        print("Realtime translation: \(text)")
+    }
+
     private func fixtureURL(_ name: String) throws -> URL {
         let dir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

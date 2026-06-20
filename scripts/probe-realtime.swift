@@ -109,6 +109,11 @@ final class Probe: NSObject, URLSessionWebSocketDelegate {
         case "conversation.item.input_audio_transcription.completed":
             sawCompleted = true
             log("← COMPLETED transcript: \(obj["transcript"] as? String ?? "<none>")")
+        case "session.output_transcript.delta":
+            // gpt-realtime-translate: target-language translated text fragments.
+            let d = obj["delta"] as? String ?? ""
+            transcriptDeltas += d
+            log("← translate delta: \(d)")
         case "error":
             let e = obj["error"] as? [String: Any]
             log("← ERROR: \(e?["message"] as? String ?? text)")
@@ -131,9 +136,15 @@ final class Probe: NSObject, URLSessionWebSocketDelegate {
 
 let pcm = try pcm16Bytes(URL(fileURLWithPath: fixture))
 
+// Translation mode (gpt-realtime-translate) when TRANSLATE_TO is set, e.g. "ru".
+let translateTo = ProcessInfo.processInfo.environment["TRANSLATE_TO"]
+
 let probe = Probe()
 let session = URLSession(configuration: .default, delegate: probe, delegateQueue: nil)
-var request = URLRequest(url: URL(string: "wss://api.openai.com/v1/realtime?intent=transcription")!)
+let urlString = translateTo != nil
+    ? "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate"
+    : "wss://api.openai.com/v1/realtime?intent=transcription"
+var request = URLRequest(url: URL(string: urlString)!)
 request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
 // GA Realtime API: no OpenAI-Beta header.
 probe.ws = session.webSocketTask(with: request)
@@ -143,23 +154,33 @@ probe.ws.resume()
 // Give the socket a moment to open, then configure + stream.
 Thread.sleep(forTimeInterval: 1.0)
 
-probe.send([
-    "type": "session.update",
-    "session": [
-        "type": "transcription",
-        "audio": [
-            "input": [
-                "format": ["type": "audio/pcm", "rate": 24000],
-                "transcription": ["model": model]
+if let translateTo {
+    probe.send([
+        "type": "session.update",
+        "session": ["audio": ["output": ["language": translateTo]]]
+    ], label: "session.update translateTo=\(translateTo)")
+} else {
+    probe.send([
+        "type": "session.update",
+        "session": [
+            "type": "transcription",
+            "audio": [
+                "input": [
+                    "format": ["type": "audio/pcm", "rate": 24000],
+                    "transcription": ["model": model]
+                ]
             ]
         ]
-    ]
-], label: "session.update model=\(model)")
+    ], label: "session.update model=\(model)")
+}
 
 Thread.sleep(forTimeInterval: 0.5)
 
+// The translation endpoint namespaces client events under "session." and has no commit.
+let appendType = translateTo != nil ? "session.input_audio_buffer.append" : "input_audio_buffer.append"
+
 if chunkMillis <= 0 {
-    probe.send(["type": "input_audio_buffer.append", "audio": pcm.base64EncodedString()],
+    probe.send(["type": appendType, "audio": pcm.base64EncodedString()],
                label: "single append")
 } else {
     let bytesPerChunk = (24000 * 2 * chunkMillis) / 1000   // 24kHz * 2 bytes * ms
@@ -167,14 +188,16 @@ if chunkMillis <= 0 {
     while offset < pcm.count {
         let end = min(offset + bytesPerChunk, pcm.count)
         let slice = pcm.subdata(in: offset..<end)
-        probe.send(["type": "input_audio_buffer.append", "audio": slice.base64EncodedString()],
+        probe.send(["type": appendType, "audio": slice.base64EncodedString()],
                    label: "chunk \(n) [\(slice.count)B]")
         offset = end; n += 1
         Thread.sleep(forTimeInterval: 0.02)
     }
 }
 
-probe.send(["type": "input_audio_buffer.commit"], label: "commit")
+if translateTo == nil {
+    probe.send(["type": "input_audio_buffer.commit"], label: "commit")
+}
 
 // Wait up to 15s for transcription events or a close.
 log("… waiting up to 15s for events")

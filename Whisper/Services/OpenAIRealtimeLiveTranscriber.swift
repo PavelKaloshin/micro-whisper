@@ -14,6 +14,16 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     private let model: String
     private let language: String?
     private let apiKeyProvider: () -> String?
+    /// When set, this is a live *translation* session (gpt-realtime-translate):
+    /// the stream returns text already translated into this output language,
+    /// using a different endpoint, session shape, and client event names.
+    private let translateTo: String?
+
+    private nonisolated var isTranslating: Bool { translateTo != nil }
+    /// The translation endpoint namespaces audio events under "session.".
+    private nonisolated var appendEventType: String {
+        isTranslating ? "session.input_audio_buffer.append" : "input_audio_buffer.append"
+    }
 
     private let engine = AVAudioEngine()
     // Accessed from both the main actor and the audio render thread / send path.
@@ -38,11 +48,15 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     ///   - model: transcription model (default `gpt-realtime-whisper`, the
     ///            current low-latency streaming transcription model).
     ///   - language: ISO-639-1 hint, or nil for auto-detect.
+    ///   - translateTo: output language code for live translation
+    ///     (gpt-realtime-translate); nil for plain transcription.
     init(model: String = "gpt-realtime-whisper",
          language: String? = nil,
+         translateTo: String? = nil,
          apiKeyProvider: @escaping () -> String? = { KeychainService.shared.getAPIKey() }) {
         self.model = model
         self.language = language
+        self.translateTo = translateTo
         self.apiKeyProvider = apiKeyProvider
     }
 
@@ -64,7 +78,10 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     }
 
     private func openSocket(key: String) {
-        var request = URLRequest(url: URL(string: "wss://api.openai.com/v1/realtime?intent=transcription")!)
+        let urlString = isTranslating
+            ? "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate"
+            : "wss://api.openai.com/v1/realtime?intent=transcription"
+        var request = URLRequest(url: URL(string: urlString)!)
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         // GA Realtime API: the beta `OpenAI-Beta: realtime=v1` header is gone — sending
         // it now makes the server reject the connection (beta_api_shape_disabled).
@@ -97,9 +114,9 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
         }
         self.converter = converter
         if let data = Self.pcm16Data(from: buffer, to: targetFormat, using: converter) {
-            send(["type": "input_audio_buffer.append", "audio": data.base64EncodedString()])
+            send(["type": appendEventType, "audio": data.base64EncodedString()])
         }
-        send(["type": "input_audio_buffer.commit"])
+        if !isTranslating { send(["type": "input_audio_buffer.commit"]) }
     }
 
     func stop() async -> String {
@@ -110,7 +127,7 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
             engine.stop()
             audioStarted = false
         }
-        send(["type": "input_audio_buffer.commit"])
+        if !isTranslating { send(["type": "input_audio_buffer.commit"]) }
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         converter = nil
@@ -120,6 +137,15 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     // MARK: - Session
 
     private func configureSession() {
+        // Translation session: only the target output language is set; the source
+        // language is auto-detected and the stream returns translated text.
+        if let translateTo {
+            send([
+                "type": "session.update",
+                "session": ["audio": ["output": ["language": translateTo]]]
+            ])
+            return
+        }
         var transcription: [String: Any] = ["model": model]
         if let language { transcription["language"] = language }
         // GA shape: `session.update` with a typed transcription session and the audio
@@ -168,7 +194,7 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     private nonisolated func sendAudio(_ buffer: AVAudioPCMBuffer) {
         guard let converter = converter,
               let data = Self.pcm16Data(from: buffer, to: targetFormat, using: converter) else { return }
-        send(["type": "input_audio_buffer.append", "audio": data.base64EncodedString()])
+        send(["type": appendEventType, "audio": data.base64EncodedString()])
     }
 
     /// Normalized (0...1) RMS level of a captured buffer, for the live mic meter.
@@ -270,6 +296,11 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
             return .ignored
         case "conversation.item.input_audio_transcription.completed":
             return .completed(obj["transcript"] as? String)
+        case "session.output_transcript.delta":
+            // gpt-realtime-translate: append-only translated text fragments
+            // (no separate completed event — deltas accumulate to the result).
+            if let delta = obj["delta"] as? String { return .delta(delta) }
+            return .ignored
         case "error":
             let message = (obj["error"] as? [String: Any])?["message"] as? String ?? "realtime transcription error"
             return .failure(message)

@@ -87,7 +87,7 @@ struct SettingsView: View {
                     .disabled(!appState.liveModeEnabled)
                 }
 
-                Text("When on, the record hotkey streams text live as you speak. Cloud uses OpenAI's Realtime API; Local runs WhisperKit on-device (downloads the model on first use; requires macOS 15+). The LANGUAGE keys (0/1/2) set the output language — non-Auto translates the result on stop.")
+                Text("When on, the record hotkey streams text live as you speak. Cloud uses OpenAI's Realtime API; Local runs WhisperKit on-device (downloads the model on first use; requires macOS 15+). The LANGUAGE keys (0/1/2) set the output language: with Cloud + a non-Auto language the text is translated live (gpt-realtime-translate); otherwise it's translated on stop.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

@@ -31,7 +31,19 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
-      
+
+      - name: Ad-hoc code sign
+        # The build produces a weak "linker-signed" ad-hoc binary, which macOS TCC
+        # won't reliably remember — so Microphone/Accessibility permissions get
+        # re-prompted every launch and auto-paste silently fails. An explicit ad-hoc
+        # signature (flags 0x2, stable cdhash) makes those grants stick on the user's
+        # machine. (Not Developer ID, so Gatekeeper still warns on first open.)
+        run: |
+          codesign --force --deep --sign - \
+            --entitlements Whisper/Whisper.entitlements \
+            build/Build/Products/Release/Whisper.app
+          codesign -dvvv build/Build/Products/Release/Whisper.app 2>&1 | grep -iE "Signature=|flags="
+
       - name: Create DMG
         run: |
           APP_PATH="build/Build/Products/Release/Whisper.app"

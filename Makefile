@@ -21,6 +21,7 @@ build:
 		CODE_SIGNING_REQUIRED=NO \
 		CODE_SIGNING_ALLOWED=NO \
 		build
+	codesign --force --deep --sign - --entitlements Whisper/Whisper.entitlements "$(APP)"
 
 run:
 			xcodebuild -project $(PROJECT) \
@@ -31,6 +32,7 @@ run:
 							CODE_SIGNING_REQUIRED=NO \
 							CODE_SIGNING_ALLOWED=NO \
 							build
+			codesign --force --deep --sign - --entitlements Whisper/Whisper.entitlements "$(DEBUG_APP)"
 			@pkill -f "$(DEBUG_APP)/Contents/MacOS/Whisper" 2>/dev/null || true
 			open "$(DEBUG_APP)"
 

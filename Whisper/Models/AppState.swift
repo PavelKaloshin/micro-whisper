@@ -217,7 +217,7 @@ class AppState: ObservableObject {
     @AppStorage("customTerminology") var customTerminologyJSON: String = "[]" // JSON array of terms
     @AppStorage("enableTerminologyCorrection") var enableTerminologyCorrection: Bool = false
     @AppStorage("globeKeyDoublePressOnly") var globeKeyDoublePressOnly: Bool = false
-    @AppStorage("liveModeEnabled") var liveModeEnabled: Bool = false
+    @AppStorage("liveModeEnabled") var liveModeEnabled: Bool = true
     @AppStorage("liveTranscriptionEngine") var liveEngineRaw: String = "cloud"
     @AppStorage("liveCloudModel") var liveCloudModel: String = "gpt-realtime-whisper"
     @AppStorage("liveLocalModel") var liveLocalModel: String = "base"

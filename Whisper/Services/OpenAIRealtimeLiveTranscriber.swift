@@ -34,6 +34,8 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
 
     private var confirmed = ""   // text from .completed events
     private var pending = ""     // current in-progress deltas
+    private var isStopping = false  // true once we intentionally tear the socket down
+    private var finalContinuation: CheckedContinuation<Void, Never>?  // resumed on the final transcript
     // True once microphone capture started. Guards stop() from touching
     // engine.inputNode for file-driven sessions (startSessionOnly + streamPCMFile),
     // since merely accessing inputNode instantiates it and triggers the mic
@@ -120,18 +122,42 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     }
 
     func stop() async -> String {
-        // Only tear down the engine if we actually started capture; touching
-        // engine.inputNode otherwise would needlessly trigger the mic prompt.
+        // Stop capturing new audio first.
         if audioStarted {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
             audioStarted = false
         }
-        if !isTranslating { send(["type": "input_audio_buffer.commit"]) }
+        // Flush the trailing audio and wait for its transcript before closing, so
+        // the end of the phrase isn't lost. Transcription: commit, then wait for the
+        // `.completed` event (with a timeout). Translation: no commit/completed —
+        // give trailing deltas a moment to arrive.
+        if !isTranslating {
+            send(["type": "input_audio_buffer.commit"])
+            await awaitFinalTranscript(timeout: 3.0)
+        } else {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+        }
+        // Now tear the socket down; flag it so the receive loop doesn't treat the
+        // close as a "connection failed" error.
+        isStopping = true
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         converter = nil
         return (confirmed + pending).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Wait for the post-commit `.completed` transcript, or `timeout` seconds,
+    /// whichever comes first. Runs on the main actor, so the continuation and the
+    /// event handler that resumes it never race.
+    private func awaitFinalTranscript(timeout seconds: Double) async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            finalContinuation = cont
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                if let pending = finalContinuation { finalContinuation = nil; pending.resume() }
+            }
+        }
     }
 
     // MARK: - Session
@@ -247,6 +273,8 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
                 guard let self else { return }
                 switch result {
                 case .failure(let error):
+                    // Ignore the socket closing when we tore it down intentionally.
+                    if self.isStopping { return }
                     self.onError?(LiveTranscriptionError.connectionFailed(error.localizedDescription))
                 case .success(let message):
                     if case .string(let text) = message { self.handleEvent(text) }
@@ -265,6 +293,9 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
             confirmed += transcript ?? pending
             pending = ""
             onPartial?(confirmed.trimmingCharacters(in: .whitespacesAndNewlines))
+            // A completed transcript after our stop-commit is the signal that the
+            // trailing audio has been transcribed — let stop() finish waiting.
+            if let cont = finalContinuation { finalContinuation = nil; cont.resume() }
         case .failure(let message):
             // Server VAD auto-commits speech segments, so the explicit commit we send
             // on stop()/streamPCMFile often lands on an already-empty buffer. That

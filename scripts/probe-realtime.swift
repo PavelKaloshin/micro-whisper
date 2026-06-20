@@ -183,19 +183,29 @@ if chunkMillis <= 0 {
     probe.send(["type": appendType, "audio": pcm.base64EncodedString()],
                label: "single append")
 } else {
+    // REALTIME=1 paces chunks at wall-clock speed; COMMIT_EVERY_MS sends a periodic
+    // commit (for no-VAD streaming models like gpt-realtime-whisper).
+    let realtime = ProcessInfo.processInfo.environment["REALTIME"] == "1"
+    let commitEveryMs = Int(ProcessInfo.processInfo.environment["COMMIT_EVERY_MS"] ?? "0") ?? 0
     let bytesPerChunk = (24000 * 2 * chunkMillis) / 1000   // 24kHz * 2 bytes * ms
-    var offset = 0, n = 0
+    var offset = 0, n = 0, sinceCommitMs = 0
     while offset < pcm.count {
         let end = min(offset + bytesPerChunk, pcm.count)
         let slice = pcm.subdata(in: offset..<end)
         probe.send(["type": appendType, "audio": slice.base64EncodedString()],
                    label: "chunk \(n) [\(slice.count)B]")
-        offset = end; n += 1
-        Thread.sleep(forTimeInterval: 0.02)
+        offset = end; n += 1; sinceCommitMs += chunkMillis
+        if commitEveryMs > 0 && sinceCommitMs >= commitEveryMs && translateTo == nil {
+            probe.send(["type": "input_audio_buffer.commit"], label: "periodic commit")
+            sinceCommitMs = 0
+        }
+        Thread.sleep(forTimeInterval: realtime ? Double(chunkMillis) / 1000.0 : 0.02)
     }
 }
 
-if translateTo == nil {
+// SKIP_COMMIT=1 mimics the live mic path (no explicit commit; rely on streaming/VAD).
+let skipCommit = ProcessInfo.processInfo.environment["SKIP_COMMIT"] == "1"
+if translateTo == nil && !skipCommit {
     probe.send(["type": "input_audio_buffer.commit"], label: "commit")
 }
 

@@ -185,9 +185,6 @@ class AppState: ObservableObject {
     @Published var liveTranscript: String = ""   // live partial transcript shown while streaming
     @Published var isLiveTranscribing: Bool = false
     @Published var isPreparingLive: Bool = false  // loading the local model before streaming begins
-    // True when the live stream already returns target-language text (cloud
-    // gpt-realtime-translate), so no separate translation step runs on stop.
-    private var liveAlreadyTranslated = false
     
     enum ClipboardContent {
         case empty
@@ -316,12 +313,6 @@ class AppState: ObservableObject {
             return
         }
 
-        // Live mode: real-time streaming transcription instead of record-then-upload.
-        if liveModeEnabled {
-            startLiveTranscription()
-            return
-        }
-
         // If we're showing a result, continue the conversation
         if case .showingResult = processingState {
             recordingMode = .askGPT // Stay in Ask GPT mode
@@ -337,12 +328,20 @@ class AppState: ObservableObject {
                 enableTerminologyCorrection = true
             }
         }
-        
+
         // Refresh clipboard for modes that use it
         if recordingMode.usesClipboard {
             refreshClipboard()
         }
-        
+
+        // Live mode streams transcription instead of record-then-upload, but the
+        // selected mode still drives processing on stop (Ask/Respond/Code/Process
+        // all work — live is just the transcription method).
+        if liveModeEnabled {
+            startLiveTranscription()
+            return
+        }
+
         do {
             try audioRecorder.startRecording()
             isRecording = true
@@ -362,33 +361,44 @@ class AppState: ObservableObject {
         }
         isRecording = false
         let currentMode = recordingMode
-        
+
         guard let audioURL = audioRecorder.stopRecording() else {
             processingState = .error("No audio recorded")
             hideWindowAfterDelay()
             return
         }
-        
+
         // Transcribe with Whisper
         processingState = .transcribing
         do {
-            let language = whisperLanguage == "auto" ? nil : whisperLanguage
-            
             // Context for Whisper: it helps with technical terms and style
-            let whisperPrompt = (enableTerminologyCorrection && !customTerminology.isEmpty) 
-                ? "Technical terms: " + customTerminology.joined(separator: ", ") 
+            let whisperPrompt = (enableTerminologyCorrection && !customTerminology.isEmpty)
+                ? "Technical terms: " + customTerminology.joined(separator: ", ")
                 : "Professional transcription, correct grammar and punctuation."
-                
+
+            // Auto-detect the spoken language; the LANGUAGE selection is the output
+            // language, applied as a translation in the transcribe step (process()).
             let transcription = try await openAIService.transcribe(
-                audioURL: audioURL, 
-                language: language,
+                audioURL: audioURL,
+                language: nil,
                 prompt: whisperPrompt
             )
             lastTranscription = transcription
-            
+            try await process(transcription, mode: currentMode)
+            try? FileManager.default.removeItem(at: audioURL)
+        } catch {
+            processingState = .error(error.localizedDescription)
+            hideWindowAfterDelay()
+        }
+    }
+
+    /// Process a finished transcription according to the active mode. Shared by the
+    /// classic record→upload path and the live streaming path, so every mode works
+    /// regardless of how the audio was captured.
+    private func process(_ transcription: String, mode: RecordingMode) async throws {
             var finalText = transcription
-            
-            switch currentMode {
+
+            switch mode {
             case .askGPT:
                 // Ask GPT mode - get an answer with conversation history
                 processingState = .processing
@@ -458,7 +468,7 @@ class AppState: ObservableObject {
                 
                 logToFile("Respond mode result: \(finalText.prefix(100))")
                 lastProcessedText = finalText
-                await handleResult(finalText, forMode: currentMode)
+                await handleResult(finalText, forMode: mode)
                 
             case .code:
                 // Code mode - generate code from voice description
@@ -481,7 +491,7 @@ class AppState: ObservableObject {
                 
                 logToFile("Code mode result: \(finalText.prefix(100))")
                 lastProcessedText = finalText
-                await handleResult(finalText, forMode: currentMode)
+                await handleResult(finalText, forMode: mode)
                 
             case .process:
                 // Process mode - process clipboard with voice command
@@ -535,7 +545,7 @@ class AppState: ObservableObject {
                 }
                 
                 lastProcessedText = finalText
-                await handleResult(finalText, forMode: currentMode)
+                await handleResult(finalText, forMode: mode)
                 
             case .transcribe:
                 // Normal transcribe mode - fix and paste with selected formatting
@@ -560,18 +570,18 @@ class AppState: ObservableObject {
                     
                     finalText = try await refineText(transcription, instructions: basePrompt)
                 }
-                
+
+                // Output language: translate into the selected language unless Auto.
+                if whisperLanguage != "auto" {
+                    processingState = .processing
+                    if let translated = try? await translate(finalText, to: whisperLanguage) {
+                        finalText = translated
+                    }
+                }
+
                 lastProcessedText = finalText
-                await handleResult(finalText, forMode: currentMode)
+                await handleResult(finalText, forMode: mode)
             }
-            
-            // Clean up
-            try? FileManager.default.removeItem(at: audioURL)
-            
-        } catch {
-            processingState = .error(error.localizedDescription)
-            hideWindowAfterDelay()
-        }
     }
     
     /// Handle the result based on mode and autoPaste setting
@@ -640,7 +650,7 @@ class AppState: ObservableObject {
     /// OpenAI Realtime or on-device WhisperKit). Partial text streams into
     /// `liveTranscript`; the final text is pasted on stop.
     func startLiveTranscription() {
-        previousApp = NSWorkspace.shared.frontmostApplication
+        // previousApp is captured by startRecording before this is called.
         liveTranscript = ""
         isRecording = true
         isLiveTranscribing = true
@@ -654,23 +664,12 @@ class AppState: ObservableObject {
     /// *output* language, applied as a translation step on stop (see
     /// `stopLiveTranscriptionAndPaste`).
     private func startLiveSession() {
-        let target = whisperLanguage == "auto" ? nil : whisperLanguage
-        liveAlreadyTranslated = false
-
+        // Live is purely the transcription method (auto-detect spoken language).
+        // Output-language translation and mode processing happen on stop in process().
         let transcriber: LiveTranscriber
         switch liveEngine {
-        case .cloud:
-            // With a target language and the cloud post-processing engine, translate
-            // live via gpt-realtime-translate (text arrives already translated).
-            // Otherwise transcribe and translate on stop (e.g. local Apple engine).
-            if let target, postProcessingEngine == .cloud {
-                transcriber = OpenAIRealtimeLiveTranscriber(model: "gpt-realtime-translate", language: nil, translateTo: target)
-                liveAlreadyTranslated = true
-            } else {
-                transcriber = OpenAIRealtimeLiveTranscriber(model: liveCloudModel, language: nil)
-            }
-        case .local:
-            transcriber = WhisperKitLiveTranscriber(model: liveLocalModel, language: nil)
+        case .cloud: transcriber = OpenAIRealtimeLiveTranscriber(model: liveCloudModel, language: nil)
+        case .local: transcriber = WhisperKitLiveTranscriber(model: liveLocalModel, language: nil)
         }
         audioLevel = 0
         transcriber.onPartial = { [weak self] text in
@@ -708,24 +707,25 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Stop live streaming and paste the final text. If an output language is set
-    /// (LANGUAGE != Auto), the transcript is translated into it first.
+    /// Stop live streaming and run the spoken text through the active mode — the
+    /// same pipeline as the classic flow, so Ask/Respond/Code/Process all work.
     private func stopLiveTranscriptionAndPaste() async {
         guard let transcriber = liveTranscriber else {
             isLiveTranscribing = false
             isRecording = false
             return
         }
+        let mode = recordingMode
         isRecording = false
         isLiveTranscribing = false
         isPreparingLive = false
         processingState = .transcribing
 
-        var finalText = await transcriber.stop()
+        let transcription = await transcriber.stop()
         liveTranscriber = nil
         liveTranscript = ""
 
-        guard !finalText.isEmpty else {
+        guard !transcription.isEmpty else {
             processingState = .idle
             RecordingWindowController.shared.hideWindow()
             if let app = previousApp { app.activate(options: [.activateIgnoringOtherApps]) }
@@ -733,18 +733,13 @@ class AppState: ObservableObject {
             return
         }
 
-        // Output language: translate into the selected language unless Auto or the
-        // live stream already produced translated text (gpt-realtime-translate).
-        if whisperLanguage != "auto" && !liveAlreadyTranslated {
-            processingState = .processing
-            if let translated = try? await translate(finalText, to: whisperLanguage) {
-                finalText = translated
-            }
+        lastTranscription = transcription
+        do {
+            try await process(transcription, mode: mode)
+        } catch {
+            processingState = .error(error.localizedDescription)
+            hideWindowAfterDelay()
         }
-
-        lastTranscription = finalText
-        lastProcessedText = finalText
-        await handleResult(finalText, forMode: .transcribe)
     }
 
     /// Translate text into the given language code via GPT (used as the live

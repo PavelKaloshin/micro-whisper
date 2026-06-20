@@ -1,5 +1,16 @@
 import Foundation
 
+/// The OpenAI calls AppState depends on. A protocol so tests can inject a stub
+/// and exercise the per-mode processing without hitting the network.
+protocol OpenAIServicing {
+    func transcribe(audioURL: URL, language: String?, prompt: String?) async throws -> String
+    func chat(userMessage: String, history: [(role: String, content: String)], systemPrompt: String, model: String, enableWebSearch: Bool) async throws -> String
+    func chatWithImage(userMessage: String, imageData: Data, systemPrompt: String) async throws -> String
+    func postProcess(text: String, prompt: String, model: String) async throws -> String
+}
+
+extension OpenAIService: OpenAIServicing {}
+
 class OpenAIService {
     private let baseURL: String
     private let session: URLSession

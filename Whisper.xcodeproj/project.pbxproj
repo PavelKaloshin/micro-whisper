@@ -30,6 +30,7 @@
 		B1000004 /* KeychainServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000004 /* KeychainServiceTests.swift */; };
 		B1000005 /* RealtimeParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000005 /* RealtimeParsingTests.swift */; };
 		B1000006 /* AudioConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000006 /* AudioConversionTests.swift */; };
+		B1000009 /* ModeProcessingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000009 /* ModeProcessingTests.swift */; };
 		B1000007 /* WhisperKitFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000007 /* WhisperKitFixtureTests.swift */; };
 		B1000008 /* RealtimeIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000008 /* RealtimeIntegrationTests.swift */; };
 /* End PBXBuildFile section */
@@ -60,6 +61,7 @@
 		B2000004 /* KeychainServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceTests.swift; sourceTree = "<group>"; };
 		B2000005 /* RealtimeParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeParsingTests.swift; sourceTree = "<group>"; };
 		B2000006 /* AudioConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConversionTests.swift; sourceTree = "<group>"; };
+		B2000009 /* ModeProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeProcessingTests.swift; sourceTree = "<group>"; };
 		B2000007 /* WhisperKitFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperKitFixtureTests.swift; sourceTree = "<group>"; };
 		B2000008 /* RealtimeIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -176,6 +178,7 @@
 				B2000004 /* KeychainServiceTests.swift */,
 				B2000005 /* RealtimeParsingTests.swift */,
 				B2000006 /* AudioConversionTests.swift */,
+				B2000009 /* ModeProcessingTests.swift */,
 				B2000007 /* WhisperKitFixtureTests.swift */,
 				B2000008 /* RealtimeIntegrationTests.swift */,
 				B2000001 /* StubURLProtocol.swift */,
@@ -308,6 +311,7 @@
 				B1000004 /* KeychainServiceTests.swift in Sources */,
 				B1000005 /* RealtimeParsingTests.swift in Sources */,
 				B1000006 /* AudioConversionTests.swift in Sources */,
+				B1000009 /* ModeProcessingTests.swift in Sources */,
 				B1000007 /* WhisperKitFixtureTests.swift in Sources */,
 				B1000008 /* RealtimeIntegrationTests.swift in Sources */,
 				B1000001 /* StubURLProtocol.swift in Sources */,

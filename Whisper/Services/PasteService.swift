@@ -1,6 +1,15 @@
 import AppKit
 import Carbon.HIToolbox
 
+/// The paste actions AppState depends on. A protocol so tests can inject a stub
+/// and avoid real clipboard writes / synthesized ⌘V keystrokes.
+protocol Pasting {
+    func copyAndPaste(text: String)
+    func copyToClipboard(text: String)
+}
+
+extension PasteService: Pasting {}
+
 class PasteService {
     
     private let logFile = "/tmp/whisper_paste.log"

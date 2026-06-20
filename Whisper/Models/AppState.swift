@@ -250,15 +250,20 @@ class AppState: ObservableObject {
     
     // MARK: - Services
     private let audioRecorder = AudioRecorder()
-    private let openAIService = OpenAIService()
-    private let pasteService = PasteService()
+    private let openAIService: OpenAIServicing
+    private let pasteService: Pasting
     private var liveTranscriber: LiveTranscriber?
     private var cancellables = Set<AnyCancellable>()
-    
+
     // Track previous app for restoring focus after recording
     private var previousApp: NSRunningApplication?
-    
-    private init() {
+
+    /// Services are injectable so tests can drive the per-mode processing with
+    /// stubs (no network, no real paste). Production uses the real ones.
+    init(openAIService: OpenAIServicing = OpenAIService(),
+         pasteService: Pasting = PasteService()) {
+        self.openAIService = openAIService
+        self.pasteService = pasteService
         // Subscribe to audio level updates
         audioRecorder.audioLevelPublisher
             .receive(on: DispatchQueue.main)
@@ -395,7 +400,7 @@ class AppState: ObservableObject {
     /// Process a finished transcription according to the active mode. Shared by the
     /// classic record→upload path and the live streaming path, so every mode works
     /// regardless of how the audio was captured.
-    private func process(_ transcription: String, mode: RecordingMode) async throws {
+    func process(_ transcription: String, mode: RecordingMode) async throws {
             var finalText = transcription
 
             switch mode {

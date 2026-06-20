@@ -695,14 +695,14 @@ struct RecordingOverlayView: View {
         case .transcribing:
             return "Transcribing..."
         case .processing:
-            return "Processing..."
+            return processingStatus.title
         case .showingResult:
             return "Done"
         case .error:
             return "Error"
         }
     }
-    
+
     private var subtitleText: String {
         let hotkey = currentHotkeyDisplayString()
         switch appState.processingState {
@@ -713,11 +713,28 @@ struct RecordingOverlayView: View {
         case .transcribing:
             return "Converting speech to text..."
         case .processing:
-            return "Refining with AI..."
+            return processingStatus.subtitle
         case .showingResult:
             return ""
         case .error(let msg):
             return msg
+        }
+    }
+
+    /// Mode-specific status/subtitle shown while GPT is working, so it doesn't
+    /// always read "Refining with AI…" regardless of what's actually happening.
+    private var processingStatus: (title: String, subtitle: String) {
+        switch appState.recordingMode {
+        case .transcribe:
+            return ("Refining", "Polishing your text…")
+        case .askGPT:
+            return ("Thinking", "Asking GPT…")
+        case .respond:
+            return ("Writing", "Drafting a response…")
+        case .code:
+            return ("Coding", "Generating code…")
+        case .process:
+            return ("Processing", "Working on your clipboard…")
         }
     }
 }

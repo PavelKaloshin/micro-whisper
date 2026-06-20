@@ -184,6 +184,10 @@ class AppState: ObservableObject {
     @Published var autoPasteResult: Bool = true // If true, paste result. If false, show in chat.
     @Published var liveTranscript: String = ""   // live partial transcript shown while streaming
     @Published var isLiveTranscribing: Bool = false
+    @Published var isPreparingLive: Bool = false  // loading the local model before streaming begins
+    // Text transcribed before a mid-stream language switch; the restarted session
+    // appends to this so switching language doesn't lose what was already said.
+    private var liveCommittedPrefix: String = ""
     
     enum ClipboardContent {
         case empty
@@ -607,8 +611,10 @@ class AppState: ObservableObject {
     func cancelRecording() {
         if isLiveTranscribing, let transcriber = liveTranscriber {
             isLiveTranscribing = false
+            isPreparingLive = false
             liveTranscriber = nil
             liveTranscript = ""
+            liveCommittedPrefix = ""
             Task { _ = await transcriber.stop() }
         }
         audioRecorder.stopRecording()
@@ -631,7 +637,26 @@ class AppState: ObservableObject {
     /// `liveTranscript`; the final text is pasted on stop.
     func startLiveTranscription() {
         previousApp = NSWorkspace.shared.frontmostApplication
+        liveCommittedPrefix = ""
         liveTranscript = ""
+        isRecording = true
+        isLiveTranscribing = true
+        processingState = .recording
+        RecordingWindowController.shared.showWindow()
+        startLiveSession()
+    }
+
+    /// Combine the committed prefix (text from before a language switch) with the
+    /// current session's streaming text.
+    private func composeLive(_ sessionText: String) -> String {
+        if liveCommittedPrefix.isEmpty { return sessionText }
+        if sessionText.isEmpty { return liveCommittedPrefix }
+        return liveCommittedPrefix + " " + sessionText
+    }
+
+    /// Spin up a fresh transcriber for the current `liveEngine`/`whisperLanguage`.
+    /// Used both for the initial start and when restarting after a language switch.
+    private func startLiveSession() {
         let language = whisperLanguage == "auto" ? nil : whisperLanguage
 
         let transcriber: LiveTranscriber
@@ -641,13 +666,15 @@ class AppState: ObservableObject {
         }
         audioLevel = 0
         transcriber.onPartial = { [weak self] text in
-            self?.liveTranscript = text
+            guard let self else { return }
+            self.liveTranscript = self.composeLive(text)
         }
         transcriber.onAudioLevel = { [weak self] level in
             self?.audioLevel = level
         }
         transcriber.onError = { [weak self] error in
             guard let self else { return }
+            self.isPreparingLive = false
             self.isRecording = false
             self.isLiveTranscribing = false
             self.liveTranscriber = nil
@@ -656,21 +683,37 @@ class AppState: ObservableObject {
         }
         liveTranscriber = transcriber
 
-        isRecording = true
-        isLiveTranscribing = true
-        processingState = .recording
-        RecordingWindowController.shared.showWindow()
+        // Only show the loading indicator when the local model isn't warm yet.
+        isPreparingLive = (liveEngine == .local) && !WhisperKitLiveTranscriber.isModelCached("base")
 
         Task {
             do {
                 try await transcriber.start()
+                self.isPreparingLive = false
             } catch {
+                self.isPreparingLive = false
                 self.isRecording = false
                 self.isLiveTranscribing = false
                 self.liveTranscriber = nil
                 self.processingState = .error(error.localizedDescription)
                 self.hideWindowAfterDelay()
             }
+        }
+    }
+
+    /// Switch the dictation language mid-stream. Restarts the live session with the
+    /// new language, preserving the text transcribed so far as a committed prefix.
+    /// Pass "auto" to let the engine auto-detect the spoken language.
+    func changeLiveLanguage(to code: String) {
+        whisperLanguage = code
+        guard isLiveTranscribing, let current = liveTranscriber else { return }
+        liveCommittedPrefix = liveTranscript
+        liveTranscriber = nil
+        audioLevel = 0
+        Task {
+            _ = await current.stop()
+            guard self.isLiveTranscribing else { return }
+            self.startLiveSession()
         }
     }
 
@@ -684,11 +727,13 @@ class AppState: ObservableObject {
         }
         isRecording = false
         isLiveTranscribing = false
+        isPreparingLive = false
         processingState = .transcribing
 
-        let finalText = await transcriber.stop()
+        let finalText = composeLive(await transcriber.stop())
         liveTranscriber = nil
         liveTranscript = ""
+        liveCommittedPrefix = ""
 
         guard !finalText.isEmpty else {
             processingState = .idle

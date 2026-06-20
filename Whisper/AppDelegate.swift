@@ -30,6 +30,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         setupStatusBar()
         setupHotKey()
+
+        // If the user runs live transcription on the local engine, warm the model
+        // up now so the first session doesn't stall for a few seconds.
+        Task { @MainActor in
+            if AppState.shared.liveModeEnabled && AppState.shared.liveEngine == .local {
+                WhisperKitLiveTranscriber.prewarm()
+            }
+        }
+
         debugLog("Setup completed, statusItem = \(String(describing: statusItem))")
     }
     

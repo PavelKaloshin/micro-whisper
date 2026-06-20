@@ -32,3 +32,23 @@ final class AudioConversionTests: XCTestCase {
         XCTAssertLessThan(sampleCount, 2600)
     }
 }
+
+/// Pure unit test for stripping Whisper special tokens / placeholders out of the
+/// live transcript so they never reach the UI or the pasted text.
+final class WhisperKitTranscriptCleanTests: XCTestCase {
+
+    func testStripsSpecialTokens() {
+        let raw = "<|startoftranscript|><|ru|><|transcribe|><|0.00|> привет мир<|endoftext|>"
+        XCTAssertEqual(WhisperKitLiveTranscriber.cleanTranscript(raw), "привет мир")
+    }
+
+    func testStripsBlankAudioAndPlaceholder() {
+        XCTAssertEqual(WhisperKitLiveTranscriber.cleanTranscript("[BLANK_AUDIO]"), "")
+        XCTAssertEqual(WhisperKitLiveTranscriber.cleanTranscript("Waiting for speech..."), "")
+    }
+
+    func testCollapsesWhitespaceAndKeepsPlainText() {
+        XCTAssertEqual(WhisperKitLiveTranscriber.cleanTranscript("  hello   world  "), "hello world")
+        XCTAssertEqual(WhisperKitLiveTranscriber.cleanTranscript("the quick brown fox"), "the quick brown fox")
+    }
+}

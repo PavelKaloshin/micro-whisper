@@ -350,7 +350,7 @@ struct RecordingOverlayView: View {
         VStack(spacing: 14) {
             HStack(spacing: 8) {
                 LivePulse()
-                Text("Listening…")
+                Text(appState.isPreparingLive ? "Loading model…" : "Listening…")
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Text(appState.liveEngine.shortName)
@@ -364,18 +364,29 @@ struct RecordingOverlayView: View {
             AudioBars(level: appState.audioLevel)
                 .frame(height: 24)
 
-            // Streaming transcript
+            // Streaming transcript (or a loading state while the model warms up)
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(appState.liveTranscript.isEmpty
-                         ? "Speak now — your words will appear here as you talk."
-                         : appState.liveTranscript)
-                        .font(.system(size: 16))
-                        .foregroundColor(appState.liveTranscript.isEmpty ? .secondary : .primary)
+                    if appState.isPreparingLive {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Loading the local model (first run downloads it)…")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                        }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
                         .padding(2)
-                        .id("liveEnd")
+                    } else {
+                        Text(appState.liveTranscript.isEmpty
+                             ? "Speak now — your words will appear here as you talk."
+                             : appState.liveTranscript)
+                            .font(.system(size: 16))
+                            .foregroundColor(appState.liveTranscript.isEmpty ? .secondary : .primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(2)
+                            .id("liveEnd")
+                    }
                 }
                 .onChange(of: appState.liveTranscript) { _ in
                     withAnimation { proxy.scrollTo("liveEnd", anchor: .bottom) }
@@ -1311,25 +1322,21 @@ class RecordingWindowController: NSObject {
                     return nil
                 }
                 
-                // Language selection: 0 = auto, 1 = English, 2 = Russian
-                if event.keyCode == 29 { // 0
+                // Language selection: 0 = auto, 1 = English, 2 = Russian.
+                // In live mode this restarts the stream with the new language
+                // (preserving text so far); otherwise it just sets the preference.
+                func setLanguage(_ code: String) {
                     Task { @MainActor in
-                        AppState.shared.whisperLanguage = "auto"
+                        if AppState.shared.isLiveTranscribing {
+                            AppState.shared.changeLiveLanguage(to: code)
+                        } else {
+                            AppState.shared.whisperLanguage = code
+                        }
                     }
-                    return nil
                 }
-                if event.keyCode == 18 { // 1
-                    Task { @MainActor in
-                        AppState.shared.whisperLanguage = "en"
-                    }
-                    return nil
-                }
-                if event.keyCode == 19 { // 2
-                    Task { @MainActor in
-                        AppState.shared.whisperLanguage = "ru"
-                    }
-                    return nil
-                }
+                if event.keyCode == 29 { setLanguage("auto"); return nil } // 0
+                if event.keyCode == 18 { setLanguage("en"); return nil }   // 1
+                if event.keyCode == 19 { setLanguage("ru"); return nil }   // 2
                 
                 // Mode selection: T=Transcribe, A=Ask, R=Respond, C=Code, P=Process
                 if event.keyCode == 17 { // T

@@ -21,7 +21,7 @@ final class RealtimeIntegrationTests: XCTestCase {
         let url = try fixtureURL("hello_en.wav")
 
         let transcriber = OpenAIRealtimeLiveTranscriber(
-            model: "gpt-4o-transcribe",
+            model: "gpt-realtime-whisper",
             language: "en",
             apiKeyProvider: { key }
         )

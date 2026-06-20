@@ -35,9 +35,10 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     )!
 
     /// - Parameters:
-    ///   - model: transcription model (default `gpt-4o-transcribe`).
+    ///   - model: transcription model (default `gpt-realtime-whisper`, the
+    ///            current low-latency streaming transcription model).
     ///   - language: ISO-639-1 hint, or nil for auto-detect.
-    init(model: String = "gpt-4o-transcribe",
+    init(model: String = "gpt-realtime-whisper",
          language: String? = nil,
          apiKeyProvider: @escaping () -> String? = { KeychainService.shared.getAPIKey() }) {
         self.model = model

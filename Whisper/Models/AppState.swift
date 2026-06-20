@@ -219,7 +219,7 @@ class AppState: ObservableObject {
     @AppStorage("globeKeyDoublePressOnly") var globeKeyDoublePressOnly: Bool = false
     @AppStorage("liveModeEnabled") var liveModeEnabled: Bool = false
     @AppStorage("liveTranscriptionEngine") var liveEngineRaw: String = "cloud"
-    @AppStorage("liveCloudModel") var liveCloudModel: String = "gpt-4o-transcribe"
+    @AppStorage("liveCloudModel") var liveCloudModel: String = "gpt-realtime-whisper"
     @AppStorage("liveLocalModel") var liveLocalModel: String = "base"
 
     /// Selected live backend, backed by `liveEngineRaw` (@AppStorage stores the raw value).

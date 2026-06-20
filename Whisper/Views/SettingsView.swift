@@ -73,7 +73,8 @@ struct SettingsView: View {
 
                 if appState.liveEngine == .cloud {
                     Picker("Cloud model", selection: $appState.liveCloudModel) {
-                        Text("GPT-4o Transcribe (Best)").tag("gpt-4o-transcribe")
+                        Text("GPT-Realtime Whisper (Newest, recommended)").tag("gpt-realtime-whisper")
+                        Text("GPT-4o Transcribe").tag("gpt-4o-transcribe")
                         Text("GPT-4o mini Transcribe (Faster, cheaper)").tag("gpt-4o-mini-transcribe")
                     }
                     .disabled(!appState.liveModeEnabled)

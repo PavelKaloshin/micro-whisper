@@ -433,6 +433,32 @@ struct RecordingOverlayView: View {
     /// recording — relevant in live mode too, so both views reuse this.
     private var recordingControls: some View {
         VStack(spacing: 8) {
+            // Section 0: Capture (live vs classic, and the live engine)
+            VStack(spacing: 4) {
+                Text("CAPTURE")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+                HStack(spacing: 4) {
+                    CapturePill(
+                        label: appState.liveModeEnabled ? "Live" : "Classic",
+                        systemImage: appState.liveModeEnabled ? "dot.radiowaves.left.and.right" : "mic.fill",
+                        isActive: appState.liveModeEnabled,
+                        activeColor: .green
+                    ) { appState.setLiveMode(!appState.liveModeEnabled) }
+
+                    if appState.liveModeEnabled {
+                        CapturePill(
+                            label: appState.liveEngine.shortName,
+                            systemImage: appState.liveEngine == .cloud ? "cloud" : "cpu",
+                            isActive: true,
+                            activeColor: .blue
+                        ) { appState.setLiveEngine(appState.liveEngine == .cloud ? .local : .cloud) }
+                    }
+                }
+            }
+
+            Divider().opacity(0.3)
+
             // Section 1: Language
             VStack(spacing: 4) {
                 Text("LANGUAGE")
@@ -799,6 +825,34 @@ struct AudioBar: View {
 }
 
 // MARK: - Language Button
+
+/// A small tappable pill used in the popup's CAPTURE row (live/classic, engine).
+struct CapturePill: View {
+    let label: String
+    let systemImage: String
+    let isActive: Bool
+    let activeColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10))
+                Text(label)
+                    .font(.system(size: 11, weight: isActive ? .semibold : .regular))
+            }
+            .foregroundColor(isActive ? .white : .secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isActive ? activeColor : Color.gray.opacity(0.25))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 struct LanguageButton: View {
     let key: String

@@ -664,6 +664,52 @@ class AppState: ObservableObject {
         startLiveSession()
     }
 
+    /// Toggle live mode from the popup. If we're mid-capture, restart capture in
+    /// the new mode so the switch takes effect immediately.
+    func setLiveMode(_ enabled: Bool) {
+        guard enabled != liveModeEnabled else { return }
+        liveModeEnabled = enabled
+        guard isRecording else { return }
+        if enabled {
+            // classic → live: drop the in-progress recording and stream instead.
+            _ = audioRecorder.stopRecording()
+            isRecording = false
+            startLiveTranscription()
+        } else {
+            // live → classic: stop the stream and start a fresh audio recording.
+            if let current = liveTranscriber { Task { _ = await current.stop() } }
+            liveTranscriber = nil
+            isLiveTranscribing = false
+            isPreparingLive = false
+            liveTranscript = ""
+            do {
+                try audioRecorder.startRecording()
+                isRecording = true
+                processingState = .recording
+            } catch {
+                isRecording = false
+                processingState = .error(error.localizedDescription)
+                hideWindowAfterDelay()
+            }
+        }
+    }
+
+    /// Switch the live engine from the popup; restarts the stream if live now so
+    /// the new engine takes over immediately.
+    func setLiveEngine(_ engine: LiveTranscriptionEngine) {
+        guard engine != liveEngine else { return }
+        liveEngine = engine
+        guard isLiveTranscribing, let current = liveTranscriber else { return }
+        liveTranscriber = nil
+        liveTranscript = ""
+        audioLevel = 0
+        Task {
+            _ = await current.stop()
+            guard self.isLiveTranscribing else { return }
+            self.startLiveSession()
+        }
+    }
+
     /// Spin up a fresh transcriber for the current engine. Transcription always
     /// auto-detects the spoken language for accuracy; the LANGUAGE selection is the
     /// *output* language, applied as a translation step on stop (see

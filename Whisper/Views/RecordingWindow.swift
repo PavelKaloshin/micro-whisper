@@ -388,12 +388,14 @@ struct RecordingOverlayView: View {
                     .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
             )
 
+            recordingControls
+
             Text("🌐🌐 / \(currentHotkeyDisplayString()) — finish & paste • Esc — cancel")
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
         }
         .padding(20)
-        .frame(width: 380, height: 440)
+        .frame(width: 380, height: 620)
         .background(
             RoundedRectangle(cornerRadius: 24)
                 .fill(.ultraThinMaterial)
@@ -407,6 +409,99 @@ struct RecordingOverlayView: View {
         .overlay(alignment: .topTrailing) { menuButton }
     }
     
+    /// The hotkey controls (language / mode / format / options) shown while
+    /// recording — relevant in live mode too, so both views reuse this.
+    private var recordingControls: some View {
+        VStack(spacing: 8) {
+            // Section 1: Language
+            VStack(spacing: 4) {
+                Text("LANGUAGE")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+                HStack(spacing: 5) {
+                    LanguageButton(key: "0", label: "Auto", code: "auto", currentLanguage: appState.whisperLanguage)
+                    LanguageButton(key: "1", label: "EN", code: "en", currentLanguage: appState.whisperLanguage)
+                    LanguageButton(key: "2", label: "RU", code: "ru", currentLanguage: appState.whisperLanguage)
+                }
+            }
+
+            Divider().opacity(0.3)
+
+            // Section 2: Mode
+            VStack(spacing: 4) {
+                Text("MODE")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+                HStack(spacing: 4) {
+                    ForEach([RecordingMode.transcribe, .askGPT, .respond], id: \.self) { mode in
+                        RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
+                    }
+                }
+                HStack(spacing: 4) {
+                    ForEach([RecordingMode.code, .process], id: \.self) { mode in
+                        RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
+                    }
+                }
+            }
+
+            // Section 3: Mode-specific options
+            if appState.recordingMode == .transcribe {
+                Divider().opacity(0.3)
+                VStack(spacing: 4) {
+                    Text("FORMAT")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    HStack(spacing: 4) {
+                        ForEach(FormattingMode.allCases, id: \.self) { mode in
+                            FormattingButton(mode: mode, currentMode: appState.formattingMode)
+                        }
+                    }
+                }
+            }
+
+            if appState.recordingMode == .code {
+                Divider().opacity(0.3)
+                VStack(spacing: 4) {
+                    Text("LANGUAGE")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    HStack(spacing: 4) {
+                        ForEach(CodeLanguageMode.allCases, id: \.self) { mode in
+                            CodeLanguageButton(mode: mode, currentMode: appState.codeLanguageMode)
+                        }
+                    }
+                }
+            }
+
+            Divider().opacity(0.3)
+
+            // Section 4: Options
+            VStack(spacing: 4) {
+                Text("OPTIONS")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+
+                HStack(spacing: 8) {
+                    if appState.recordingMode.usesClipboard {
+                        ClipboardIndicator(
+                            content: appState.clipboardContent,
+                            useClipboard: $appState.useClipboardContext
+                        )
+                    }
+
+                    if appState.recordingMode == .transcribe && !appState.customTerminology.isEmpty {
+                        TerminologyToggle(isEnabled: $appState.enableTerminologyCorrection)
+                    }
+
+                    if appState.recordingMode != .askGPT {
+                        OutputModeToggle(autoPaste: $appState.autoPasteResult)
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
     private var recordingView: some View {
         VStack(spacing: 16) {
             // Animated audio visualization
@@ -451,102 +546,11 @@ struct RecordingOverlayView: View {
 
             // Controls during recording
             if appState.isRecording {
-                VStack(spacing: 8) {
-                    // Section 1: Language
-                    VStack(spacing: 4) {
-                        Text("LANGUAGE")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(.secondary.opacity(0.7))
-                        HStack(spacing: 5) {
-                            LanguageButton(key: "0", label: "Auto", code: "auto", currentLanguage: appState.whisperLanguage)
-                            LanguageButton(key: "1", label: "EN", code: "en", currentLanguage: appState.whisperLanguage)
-                            LanguageButton(key: "2", label: "RU", code: "ru", currentLanguage: appState.whisperLanguage)
-                        }
-                    }
-                    
-                    Divider().opacity(0.3)
-                    
-                    // Section 2: Mode
-                    VStack(spacing: 4) {
-                        Text("MODE")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(.secondary.opacity(0.7))
-                        HStack(spacing: 4) {
-                            ForEach([RecordingMode.transcribe, .askGPT, .respond], id: \.self) { mode in
-                                RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
-                            }
-                        }
-                        HStack(spacing: 4) {
-                            ForEach([RecordingMode.code, .process], id: \.self) { mode in
-                                RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
-                            }
-                        }
-                    }
-                    
-                    // Section 3: Mode-specific options
-                    if appState.recordingMode == .transcribe {
-                        Divider().opacity(0.3)
-                        VStack(spacing: 4) {
-                            Text("FORMAT")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(.secondary.opacity(0.7))
-                            HStack(spacing: 4) {
-                                ForEach(FormattingMode.allCases, id: \.self) { mode in
-                                    FormattingButton(mode: mode, currentMode: appState.formattingMode)
-                                }
-                            }
-                        }
-                    }
-                    
-                    if appState.recordingMode == .code {
-                        Divider().opacity(0.3)
-                        VStack(spacing: 4) {
-                            Text("LANGUAGE")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(.secondary.opacity(0.7))
-                            HStack(spacing: 4) {
-                                ForEach(CodeLanguageMode.allCases, id: \.self) { mode in
-                                    CodeLanguageButton(mode: mode, currentMode: appState.codeLanguageMode)
-                                }
-                            }
-                        }
-                    }
-                    
-                    Divider().opacity(0.3)
-                    
-                    // Section 4: Options
-                    VStack(spacing: 4) {
-                        Text("OPTIONS")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(.secondary.opacity(0.7))
-                        
-                        HStack(spacing: 8) {
-                            // Clipboard toggle (for modes that use it)
-                            if appState.recordingMode.usesClipboard {
-                                ClipboardIndicator(
-                                    content: appState.clipboardContent,
-                                    useClipboard: $appState.useClipboardContext
-                                )
-                            }
-                            
-                            // Terminology toggle (only in transcribe mode if terms exist)
-                            if appState.recordingMode == .transcribe && !appState.customTerminology.isEmpty {
-                                TerminologyToggle(isEnabled: $appState.enableTerminologyCorrection)
-                            }
-                            
-                            // Output mode toggle (paste vs chat)
-                            if appState.recordingMode != .askGPT {
-                                OutputModeToggle(autoPaste: $appState.autoPasteResult)
-                            }
-                        }
-                    }
-                    
-                    Text("Esc/Q — cancel")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                        .padding(.top, 2)
-                }
-                .padding(.top, 4)
+                recordingControls
+                Text("Esc/Q — cancel")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 2)
             }
         }
         .padding(20)
@@ -1232,10 +1236,12 @@ class RecordingWindowController: NSObject {
                 .environmentObject(AppState.shared)
             
             let hostingView = NSHostingView(rootView: contentView)
-            hostingView.frame = NSRect(x: 0, y: 0, width: 450, height: 450)
-            
+            // Window is transparent/borderless; size it to the tallest card (the
+            // live view with controls) so nothing clips. Cards center within it.
+            hostingView.frame = NSRect(x: 0, y: 0, width: 460, height: 660)
+
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 450, height: 450),
+                contentRect: NSRect(x: 0, y: 0, width: 460, height: 660),
                 styleMask: [.borderless],
                 backing: .buffered,
                 defer: false

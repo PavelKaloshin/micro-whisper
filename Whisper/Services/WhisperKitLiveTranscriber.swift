@@ -30,7 +30,12 @@ final class WhisperKitLiveTranscriber: LiveTranscriber {
     func start() async throws {
         let pipe: WhisperKit
         do {
-            pipe = try await WhisperKit(model: modelName, verbose: false)
+            // load: true forces loadModels() during init so the tokenizer (and the
+            // encoder/decoder) are ready. Without it WhisperKit defers loading and
+            // pipe.tokenizer is nil here — the classic record→upload path got away
+            // with it because transcribe() loads lazily, but the live path reads
+            // tokenizer up front.
+            pipe = try await WhisperKit(model: modelName, verbose: false, load: true)
         } catch {
             throw LiveTranscriptionError.modelUnavailable(error.localizedDescription)
         }
@@ -57,10 +62,13 @@ final class WhisperKitLiveTranscriber: LiveTranscriber {
             let joined = segments.map { $0.text }.joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let text = joined.isEmpty ? newState.currentText : joined
+            // Drive the live meter from WhisperKit's per-buffer relative energy.
+            let level = min(1, (newState.bufferEnergy.last ?? 0) * 3)
             Task { @MainActor in
                 guard let self else { return }
                 self.latestText = text
                 self.onPartial?(text)
+                self.onAudioLevel?(level)
             }
         }
         self.transcriber = transcriber

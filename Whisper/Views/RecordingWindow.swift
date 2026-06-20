@@ -726,6 +726,10 @@ struct RecordingOverlayView: View {
     private var processingStatus: (title: String, subtitle: String) {
         switch appState.recordingMode {
         case .transcribe:
+            if appState.whisperLanguage != "auto" {
+                let lang = AppState.languageName(for: appState.whisperLanguage)
+                return ("Translating", "Translating to \(lang)…")
+            }
             return ("Refining", "Polishing your text…")
         case .askGPT:
             return ("Thinking", "Asking GPT…")

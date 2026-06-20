@@ -1,5 +1,16 @@
 import Foundation
 
+/// The OpenAI calls AppState depends on. A protocol so tests can inject a stub
+/// and exercise the per-mode processing without hitting the network.
+protocol OpenAIServicing {
+    func transcribe(audioURL: URL, language: String?, prompt: String?) async throws -> String
+    func chat(userMessage: String, history: [(role: String, content: String)], systemPrompt: String, model: String, enableWebSearch: Bool) async throws -> String
+    func chatWithImage(userMessage: String, imageData: Data, systemPrompt: String) async throws -> String
+    func postProcess(text: String, prompt: String, model: String) async throws -> String
+}
+
+extension OpenAIService: OpenAIServicing {}
+
 class OpenAIService {
     private let baseURL: String
     private let session: URLSession
@@ -161,7 +172,11 @@ class OpenAIService {
         // Add current user message
         messages.append(["role": "user", "content": userMessage])
         
-        // Build request body - use search model if web search is enabled
+        // Build request body - use search model if web search is enabled.
+        // NOTE: `gpt-4o-search-preview` + `web_search_options` is the legacy 2025
+        // web-search path. The modern approach is the `web_search` tool on a
+        // frontier model (gpt-5.x). Left as-is to avoid breaking Ask/Respond/Code/
+        // Process blind — verify against the API (key) and migrate to the tool.
         var requestBody: [String: Any] = [
             "model": enableWebSearch ? "gpt-4o-search-preview" : model,
             "messages": messages
@@ -214,7 +229,7 @@ class OpenAIService {
         
         // Build the request body manually for vision API
         let requestBody: [String: Any] = [
-            "model": "gpt-4o",  // GPT-4o supports vision
+            "model": "gpt-5.4",  // vision-capable (image input); replaces legacy gpt-4o
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 [

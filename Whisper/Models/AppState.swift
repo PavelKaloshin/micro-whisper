@@ -2,6 +2,15 @@ import Foundation
 import SwiftUI
 import Combine
 
+/// Identifies the running build so the UI can visibly flag the dev build
+/// ("Whisper Dev", com.whisper.app.dev) distinctly from the shipping build
+/// ("Whisper", com.whisper.app) — useful when both run side by side.
+enum AppEnvironment {
+    static var isDev: Bool { Bundle.main.bundleIdentifier == "com.whisper.app.dev" }
+    /// Short badge to show in the UI, or nil for the shipping build.
+    static var badge: String? { isDev ? "DEV" : nil }
+}
+
 enum ProcessingState: Equatable {
     case idle
     case recording
@@ -173,6 +182,9 @@ class AppState: ObservableObject {
     @Published var useClipboardContext: Bool = true
     @Published var clipboardContent: ClipboardContent = .empty
     @Published var autoPasteResult: Bool = true // If true, paste result. If false, show in chat.
+    @Published var liveTranscript: String = ""   // live partial transcript shown while streaming
+    @Published var isLiveTranscribing: Bool = false
+    @Published var isPreparingLive: Bool = false  // loading the local model before streaming begins
     
     enum ClipboardContent {
         case empty
@@ -198,13 +210,30 @@ class AppState: ObservableObject {
     }
     
     // MARK: - Settings
-    @AppStorage("gptModel") var gptModel: String = "gpt-4o-mini"
+    @AppStorage("gptModel") var gptModel: String = "gpt-5.4-mini"
     @AppStorage("postProcessingPrompt") var postProcessingPrompt: String = "Fix grammar, punctuation, and formatting. Keep the original meaning and style. Return only the corrected text without explanations."
     @AppStorage("enableGPTProcessing") var enableGPTProcessing: Bool = true
     @AppStorage("whisperLanguage") var whisperLanguage: String = "auto" // "auto", "ru", "en", etc.
     @AppStorage("customTerminology") var customTerminologyJSON: String = "[]" // JSON array of terms
     @AppStorage("enableTerminologyCorrection") var enableTerminologyCorrection: Bool = false
     @AppStorage("globeKeyDoublePressOnly") var globeKeyDoublePressOnly: Bool = false
+    @AppStorage("liveModeEnabled") var liveModeEnabled: Bool = true
+    @AppStorage("liveTranscriptionEngine") var liveEngineRaw: String = "cloud"
+    @AppStorage("liveCloudModel") var liveCloudModel: String = "gpt-realtime-whisper"
+    @AppStorage("liveLocalModel") var liveLocalModel: String = "base"
+    @AppStorage("postProcessingEngine") var postProcessingEngineRaw: String = "cloud"
+
+    /// Engine for refinement/translation, backed by `postProcessingEngineRaw`.
+    var postProcessingEngine: PostProcessingEngine {
+        get { PostProcessingEngine(rawValue: postProcessingEngineRaw) ?? .cloud }
+        set { postProcessingEngineRaw = newValue.rawValue }
+    }
+
+    /// Selected live backend, backed by `liveEngineRaw` (@AppStorage stores the raw value).
+    var liveEngine: LiveTranscriptionEngine {
+        get { LiveTranscriptionEngine(rawValue: liveEngineRaw) ?? .cloud }
+        set { liveEngineRaw = newValue.rawValue }
+    }
     
     // Computed property for terminology list
     var customTerminology: [String] {
@@ -221,14 +250,20 @@ class AppState: ObservableObject {
     
     // MARK: - Services
     private let audioRecorder = AudioRecorder()
-    private let openAIService = OpenAIService()
-    private let pasteService = PasteService()
+    private let openAIService: OpenAIServicing
+    private let pasteService: Pasting
+    private var liveTranscriber: LiveTranscriber?
     private var cancellables = Set<AnyCancellable>()
-    
+
     // Track previous app for restoring focus after recording
     private var previousApp: NSRunningApplication?
-    
-    private init() {
+
+    /// Services are injectable so tests can drive the per-mode processing with
+    /// stubs (no network, no real paste). Production uses the real ones.
+    init(openAIService: OpenAIServicing = OpenAIService(),
+         pasteService: Pasting = PasteService()) {
+        self.openAIService = openAIService
+        self.pasteService = pasteService
         // Subscribe to audio level updates
         audioRecorder.audioLevelPublisher
             .receive(on: DispatchQueue.main)
@@ -282,7 +317,7 @@ class AppState: ObservableObject {
             hideWindowAfterDelay()
             return
         }
-        
+
         // If we're showing a result, continue the conversation
         if case .showingResult = processingState {
             recordingMode = .askGPT // Stay in Ask GPT mode
@@ -298,12 +333,20 @@ class AppState: ObservableObject {
                 enableTerminologyCorrection = true
             }
         }
-        
+
         // Refresh clipboard for modes that use it
         if recordingMode.usesClipboard {
             refreshClipboard()
         }
-        
+
+        // Live mode streams transcription instead of record-then-upload, but the
+        // selected mode still drives processing on stop (Ask/Respond/Code/Process
+        // all work — live is just the transcription method).
+        if liveModeEnabled {
+            startLiveTranscription()
+            return
+        }
+
         do {
             try audioRecorder.startRecording()
             isRecording = true
@@ -317,35 +360,50 @@ class AppState: ObservableObject {
     }
     
     func stopRecordingAndProcess() async {
+        if isLiveTranscribing {
+            await stopLiveTranscriptionAndPaste()
+            return
+        }
         isRecording = false
         let currentMode = recordingMode
-        
+
         guard let audioURL = audioRecorder.stopRecording() else {
             processingState = .error("No audio recorded")
             hideWindowAfterDelay()
             return
         }
-        
+
         // Transcribe with Whisper
         processingState = .transcribing
         do {
-            let language = whisperLanguage == "auto" ? nil : whisperLanguage
-            
             // Context for Whisper: it helps with technical terms and style
-            let whisperPrompt = (enableTerminologyCorrection && !customTerminology.isEmpty) 
-                ? "Technical terms: " + customTerminology.joined(separator: ", ") 
+            let whisperPrompt = (enableTerminologyCorrection && !customTerminology.isEmpty)
+                ? "Technical terms: " + customTerminology.joined(separator: ", ")
                 : "Professional transcription, correct grammar and punctuation."
-                
+
+            // Auto-detect the spoken language; the LANGUAGE selection is the output
+            // language, applied as a translation in the transcribe step (process()).
             let transcription = try await openAIService.transcribe(
-                audioURL: audioURL, 
-                language: language,
+                audioURL: audioURL,
+                language: nil,
                 prompt: whisperPrompt
             )
             lastTranscription = transcription
-            
+            try await process(transcription, mode: currentMode)
+            try? FileManager.default.removeItem(at: audioURL)
+        } catch {
+            processingState = .error(error.localizedDescription)
+            hideWindowAfterDelay()
+        }
+    }
+
+    /// Process a finished transcription according to the active mode. Shared by the
+    /// classic record→upload path and the live streaming path, so every mode works
+    /// regardless of how the audio was captured.
+    func process(_ transcription: String, mode: RecordingMode) async throws {
             var finalText = transcription
-            
-            switch currentMode {
+
+            switch mode {
             case .askGPT:
                 // Ask GPT mode - get an answer with conversation history
                 processingState = .processing
@@ -415,7 +473,7 @@ class AppState: ObservableObject {
                 
                 logToFile("Respond mode result: \(finalText.prefix(100))")
                 lastProcessedText = finalText
-                await handleResult(finalText, forMode: currentMode)
+                await handleResult(finalText, forMode: mode)
                 
             case .code:
                 // Code mode - generate code from voice description
@@ -438,7 +496,7 @@ class AppState: ObservableObject {
                 
                 logToFile("Code mode result: \(finalText.prefix(100))")
                 lastProcessedText = finalText
-                await handleResult(finalText, forMode: currentMode)
+                await handleResult(finalText, forMode: mode)
                 
             case .process:
                 // Process mode - process clipboard with voice command
@@ -492,7 +550,7 @@ class AppState: ObservableObject {
                 }
                 
                 lastProcessedText = finalText
-                await handleResult(finalText, forMode: currentMode)
+                await handleResult(finalText, forMode: mode)
                 
             case .transcribe:
                 // Normal transcribe mode - fix and paste with selected formatting
@@ -515,24 +573,20 @@ class AppState: ObservableObject {
                         """
                     }
                     
-                    finalText = try await openAIService.postProcess(
-                        text: transcription,
-                        prompt: basePrompt,
-                        model: gptModel
-                    )
+                    finalText = try await refineText(transcription, instructions: basePrompt)
                 }
-                
+
+                // Output language: translate into the selected language unless Auto.
+                if whisperLanguage != "auto" {
+                    processingState = .processing
+                    if let translated = try? await translate(finalText, to: whisperLanguage) {
+                        finalText = translated
+                    }
+                }
+
                 lastProcessedText = finalText
-                await handleResult(finalText, forMode: currentMode)
+                await handleResult(finalText, forMode: mode)
             }
-            
-            // Clean up
-            try? FileManager.default.removeItem(at: audioURL)
-            
-        } catch {
-            processingState = .error(error.localizedDescription)
-            hideWindowAfterDelay()
-        }
     }
     
     /// Handle the result based on mode and autoPaste setting
@@ -575,6 +629,13 @@ class AppState: ObservableObject {
     }
     
     func cancelRecording() {
+        if isLiveTranscribing, let transcriber = liveTranscriber {
+            isLiveTranscribing = false
+            isPreparingLive = false
+            liveTranscriber = nil
+            liveTranscript = ""
+            Task { _ = await transcriber.stop() }
+        }
         audioRecorder.stopRecording()
         isRecording = false
         processingState = .idle
@@ -588,6 +649,181 @@ class AppState: ObservableObject {
         previousApp = nil
     }
     
+    // MARK: - Live Transcription
+
+    /// Start real-time streaming transcription using the selected engine (cloud
+    /// OpenAI Realtime or on-device WhisperKit). Partial text streams into
+    /// `liveTranscript`; the final text is pasted on stop.
+    func startLiveTranscription() {
+        // previousApp is captured by startRecording before this is called.
+        liveTranscript = ""
+        isRecording = true
+        isLiveTranscribing = true
+        processingState = .recording
+        RecordingWindowController.shared.showWindow()
+        startLiveSession()
+    }
+
+    /// Toggle live mode from the popup. If we're mid-capture, restart capture in
+    /// the new mode so the switch takes effect immediately.
+    func setLiveMode(_ enabled: Bool) {
+        guard enabled != liveModeEnabled else { return }
+        liveModeEnabled = enabled
+        guard isRecording else { return }
+        if enabled {
+            // classic → live: drop the in-progress recording and stream instead.
+            _ = audioRecorder.stopRecording()
+            isRecording = false
+            startLiveTranscription()
+        } else {
+            // live → classic: stop the stream and start a fresh audio recording.
+            if let current = liveTranscriber { Task { _ = await current.stop() } }
+            liveTranscriber = nil
+            isLiveTranscribing = false
+            isPreparingLive = false
+            liveTranscript = ""
+            do {
+                try audioRecorder.startRecording()
+                isRecording = true
+                processingState = .recording
+            } catch {
+                isRecording = false
+                processingState = .error(error.localizedDescription)
+                hideWindowAfterDelay()
+            }
+        }
+    }
+
+    /// Switch the live engine from the popup; restarts the stream if live now so
+    /// the new engine takes over immediately.
+    func setLiveEngine(_ engine: LiveTranscriptionEngine) {
+        guard engine != liveEngine else { return }
+        liveEngine = engine
+        guard isLiveTranscribing, let current = liveTranscriber else { return }
+        liveTranscriber = nil
+        liveTranscript = ""
+        audioLevel = 0
+        Task {
+            _ = await current.stop()
+            guard self.isLiveTranscribing else { return }
+            self.startLiveSession()
+        }
+    }
+
+    /// Spin up a fresh transcriber for the current engine. Transcription always
+    /// auto-detects the spoken language for accuracy; the LANGUAGE selection is the
+    /// *output* language, applied as a translation step on stop (see
+    /// `stopLiveTranscriptionAndPaste`).
+    private func startLiveSession() {
+        // Live is purely the transcription method (auto-detect spoken language).
+        // Output-language translation and mode processing happen on stop in process().
+        let transcriber: LiveTranscriber
+        switch liveEngine {
+        case .cloud: transcriber = OpenAIRealtimeLiveTranscriber(model: liveCloudModel, language: nil)
+        case .local: transcriber = WhisperKitLiveTranscriber(model: liveLocalModel, language: nil)
+        }
+        audioLevel = 0
+        transcriber.onPartial = { [weak self] text in
+            self?.liveTranscript = text
+        }
+        transcriber.onAudioLevel = { [weak self] level in
+            self?.audioLevel = level
+        }
+        transcriber.onError = { [weak self] error in
+            guard let self else { return }
+            self.isPreparingLive = false
+            self.isRecording = false
+            self.isLiveTranscribing = false
+            self.liveTranscriber = nil
+            self.processingState = .error(error.localizedDescription)
+            self.hideWindowAfterDelay()
+        }
+        liveTranscriber = transcriber
+
+        // Only show the loading indicator when the local model isn't warm yet.
+        isPreparingLive = (liveEngine == .local) && !WhisperKitLiveTranscriber.isModelCached(liveLocalModel)
+
+        Task {
+            do {
+                try await transcriber.start()
+                self.isPreparingLive = false
+            } catch {
+                self.isPreparingLive = false
+                self.isRecording = false
+                self.isLiveTranscribing = false
+                self.liveTranscriber = nil
+                self.processingState = .error(error.localizedDescription)
+                self.hideWindowAfterDelay()
+            }
+        }
+    }
+
+    /// Stop live streaming and run the spoken text through the active mode — the
+    /// same pipeline as the classic flow, so Ask/Respond/Code/Process all work.
+    private func stopLiveTranscriptionAndPaste() async {
+        guard let transcriber = liveTranscriber else {
+            isLiveTranscribing = false
+            isRecording = false
+            return
+        }
+        let mode = recordingMode
+        isRecording = false
+        isLiveTranscribing = false
+        isPreparingLive = false
+        processingState = .transcribing
+
+        let transcription = await transcriber.stop()
+        liveTranscriber = nil
+        liveTranscript = ""
+
+        guard !transcription.isEmpty else {
+            processingState = .idle
+            RecordingWindowController.shared.hideWindow()
+            if let app = previousApp { app.activate(options: [.activateIgnoringOtherApps]) }
+            previousApp = nil
+            return
+        }
+
+        lastTranscription = transcription
+        do {
+            try await process(transcription, mode: mode)
+        } catch {
+            processingState = .error(error.localizedDescription)
+            hideWindowAfterDelay()
+        }
+    }
+
+    /// Translate text into the given language code via GPT (used as the live
+    /// "output language" step). Returns the translation, or rethrows on failure.
+    private func translate(_ text: String, to code: String) async throws -> String {
+        let name = Self.languageName(for: code)
+        let prompt = """
+        Translate the following text into \(name), preserving meaning, tone, and formatting.
+        IMPORTANT: if the text is already in \(name), return it essentially unchanged —
+        only fix obvious transcription errors and punctuation, do NOT paraphrase or reword.
+        Return only the result, with no explanations or quotes.
+        """
+        return try await refineText(text, instructions: prompt)
+    }
+
+    /// Route refinement/translation through the selected engine: on-device Apple
+    /// Intelligence when chosen and available, otherwise OpenAI GPT.
+    private func refineText(_ text: String, instructions: String) async throws -> String {
+        if postProcessingEngine == .local && LocalRefiner.isAvailable {
+            return try await LocalRefiner.run(text: text, instructions: instructions)
+        }
+        return try await openAIService.postProcess(text: text, prompt: instructions, model: gptModel)
+    }
+
+    /// Human-readable language name for a stored language code.
+    static func languageName(for code: String) -> String {
+        switch code {
+        case "en": return "English"
+        case "ru": return "Russian"
+        default: return code
+        }
+    }
+
     /// Apply terminology correction using GPT
     private func applyTerminologyCorrection(_ text: String) async throws -> String {
         let termsList = customTerminology.joined(separator: ", ")

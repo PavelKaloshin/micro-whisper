@@ -333,12 +333,221 @@ struct RecordingOverlayView: View {
         Group {
             if case .showingResult(let text) = appState.processingState {
                 ResultView(text: text)
+            } else if appState.isLiveTranscribing {
+                liveView
             } else {
                 recordingView
             }
         }
     }
+
+    // MARK: - Live (real-time) view
+
+    /// Shown while live transcription streams: a prominent, auto-scrolling
+    /// transcript with a lively "listening" indicator. The final text is pasted
+    /// only after you stop (handled in AppState), so this is purely a live preview.
+    private var liveView: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 8) {
+                LivePulse()
+                Text(appState.isPreparingLive ? "Loading model…" : "Listening…")
+                    .font(.system(size: 16, weight: .semibold))
+                Spacer()
+                if appState.whisperLanguage != "auto" {
+                    Text("→ \(appState.whisperLanguage.uppercased())")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.blue))
+                        .help("Output will be translated to this language")
+                }
+                Text(appState.liveEngine.shortName)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.gray.opacity(0.2)))
+            }
+
+            AudioBars(level: appState.audioLevel)
+                .frame(height: 24)
+
+            // Streaming transcript (or a loading state while the model warms up)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    if appState.isPreparingLive {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Loading the local model (first run downloads it)…")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(2)
+                    } else {
+                        Text(appState.liveTranscript.isEmpty
+                             ? "Speak now — your words will appear here as you talk."
+                             : appState.liveTranscript)
+                            .font(.system(size: 16))
+                            .foregroundColor(appState.liveTranscript.isEmpty ? .secondary : .primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(2)
+                            .id("liveEnd")
+                    }
+                }
+                .onChange(of: appState.liveTranscript) { _ in
+                    withAnimation { proxy.scrollTo("liveEnd", anchor: .bottom) }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            )
+
+            recordingControls
+
+            Text("🌐🌐 / \(currentHotkeyDisplayString()) — finish & paste • Esc — cancel")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+        .padding(20)
+        .frame(width: 380, height: 620)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.3), radius: 30, x: 0, y: 15)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(Color.green, lineWidth: 3)
+        )
+        .overlay(alignment: .topLeading) { devBadge }
+        .overlay(alignment: .topTrailing) { menuButton }
+    }
     
+    /// The hotkey controls (language / mode / format / options) shown while
+    /// recording — relevant in live mode too, so both views reuse this.
+    private var recordingControls: some View {
+        VStack(spacing: 8) {
+            // Section 0: Capture (live vs classic, and the live engine)
+            VStack(spacing: 4) {
+                Text("CAPTURE")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+                HStack(spacing: 4) {
+                    CapturePill(
+                        label: appState.liveModeEnabled ? "Live" : "Classic",
+                        systemImage: appState.liveModeEnabled ? "dot.radiowaves.left.and.right" : "mic.fill",
+                        isActive: appState.liveModeEnabled,
+                        activeColor: .green
+                    ) { appState.setLiveMode(!appState.liveModeEnabled) }
+
+                    if appState.liveModeEnabled {
+                        CapturePill(
+                            label: appState.liveEngine.shortName,
+                            systemImage: appState.liveEngine == .cloud ? "cloud" : "cpu",
+                            isActive: true,
+                            activeColor: .blue
+                        ) { appState.setLiveEngine(appState.liveEngine == .cloud ? .local : .cloud) }
+                    }
+                }
+            }
+
+            Divider().opacity(0.3)
+
+            // Section 1: Language
+            VStack(spacing: 4) {
+                Text("LANGUAGE")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+                HStack(spacing: 5) {
+                    LanguageButton(key: "0", label: "Auto", code: "auto", currentLanguage: appState.whisperLanguage)
+                    LanguageButton(key: "1", label: "EN", code: "en", currentLanguage: appState.whisperLanguage)
+                    LanguageButton(key: "2", label: "RU", code: "ru", currentLanguage: appState.whisperLanguage)
+                }
+            }
+
+            Divider().opacity(0.3)
+
+            // Section 2: Mode
+            VStack(spacing: 4) {
+                Text("MODE")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+                HStack(spacing: 4) {
+                    ForEach([RecordingMode.transcribe, .askGPT, .respond], id: \.self) { mode in
+                        RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
+                    }
+                }
+                HStack(spacing: 4) {
+                    ForEach([RecordingMode.code, .process], id: \.self) { mode in
+                        RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
+                    }
+                }
+            }
+
+            // Section 3: Mode-specific options
+            if appState.recordingMode == .transcribe {
+                Divider().opacity(0.3)
+                VStack(spacing: 4) {
+                    Text("FORMAT")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    HStack(spacing: 4) {
+                        ForEach(FormattingMode.allCases, id: \.self) { mode in
+                            FormattingButton(mode: mode, currentMode: appState.formattingMode)
+                        }
+                    }
+                }
+            }
+
+            if appState.recordingMode == .code {
+                Divider().opacity(0.3)
+                VStack(spacing: 4) {
+                    Text("LANGUAGE")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.7))
+                    HStack(spacing: 4) {
+                        ForEach(CodeLanguageMode.allCases, id: \.self) { mode in
+                            CodeLanguageButton(mode: mode, currentMode: appState.codeLanguageMode)
+                        }
+                    }
+                }
+            }
+
+            Divider().opacity(0.3)
+
+            // Section 4: Options
+            VStack(spacing: 4) {
+                Text("OPTIONS")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.7))
+
+                HStack(spacing: 8) {
+                    if appState.recordingMode.usesClipboard {
+                        ClipboardIndicator(
+                            content: appState.clipboardContent,
+                            useClipboard: $appState.useClipboardContext
+                        )
+                    }
+
+                    if appState.recordingMode == .transcribe && !appState.customTerminology.isEmpty {
+                        TerminologyToggle(isEnabled: $appState.enableTerminologyCorrection)
+                    }
+
+                    if appState.recordingMode != .askGPT {
+                        OutputModeToggle(autoPaste: $appState.autoPasteResult)
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
     private var recordingView: some View {
         VStack(spacing: 16) {
             // Animated audio visualization
@@ -365,105 +574,29 @@ struct RecordingOverlayView: View {
                 .font(.system(size: 13))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-            
+
+            // Live partial transcript (real-time mode)
+            if appState.isLiveTranscribing && !appState.liveTranscript.isEmpty {
+                ScrollView {
+                    Text(appState.liveTranscript)
+                        .font(.system(size: 14))
+                        .foregroundColor(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 120)
+                .padding(8)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                .cornerRadius(8)
+            }
+
             // Controls during recording
             if appState.isRecording {
-                VStack(spacing: 8) {
-                    // Section 1: Language
-                    VStack(spacing: 4) {
-                        Text("LANGUAGE")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(.secondary.opacity(0.7))
-                        HStack(spacing: 5) {
-                            LanguageButton(key: "0", label: "Auto", code: "auto", currentLanguage: appState.whisperLanguage)
-                            LanguageButton(key: "1", label: "EN", code: "en", currentLanguage: appState.whisperLanguage)
-                            LanguageButton(key: "2", label: "RU", code: "ru", currentLanguage: appState.whisperLanguage)
-                        }
-                    }
-                    
-                    Divider().opacity(0.3)
-                    
-                    // Section 2: Mode
-                    VStack(spacing: 4) {
-                        Text("MODE")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(.secondary.opacity(0.7))
-                        HStack(spacing: 4) {
-                            ForEach([RecordingMode.transcribe, .askGPT, .respond], id: \.self) { mode in
-                                RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
-                            }
-                        }
-                        HStack(spacing: 4) {
-                            ForEach([RecordingMode.code, .process], id: \.self) { mode in
-                                RecordingModeButton(mode: mode, currentMode: appState.recordingMode)
-                            }
-                        }
-                    }
-                    
-                    // Section 3: Mode-specific options
-                    if appState.recordingMode == .transcribe {
-                        Divider().opacity(0.3)
-                        VStack(spacing: 4) {
-                            Text("FORMAT")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(.secondary.opacity(0.7))
-                            HStack(spacing: 4) {
-                                ForEach(FormattingMode.allCases, id: \.self) { mode in
-                                    FormattingButton(mode: mode, currentMode: appState.formattingMode)
-                                }
-                            }
-                        }
-                    }
-                    
-                    if appState.recordingMode == .code {
-                        Divider().opacity(0.3)
-                        VStack(spacing: 4) {
-                            Text("LANGUAGE")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(.secondary.opacity(0.7))
-                            HStack(spacing: 4) {
-                                ForEach(CodeLanguageMode.allCases, id: \.self) { mode in
-                                    CodeLanguageButton(mode: mode, currentMode: appState.codeLanguageMode)
-                                }
-                            }
-                        }
-                    }
-                    
-                    Divider().opacity(0.3)
-                    
-                    // Section 4: Options
-                    VStack(spacing: 4) {
-                        Text("OPTIONS")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(.secondary.opacity(0.7))
-                        
-                        HStack(spacing: 8) {
-                            // Clipboard toggle (for modes that use it)
-                            if appState.recordingMode.usesClipboard {
-                                ClipboardIndicator(
-                                    content: appState.clipboardContent,
-                                    useClipboard: $appState.useClipboardContext
-                                )
-                            }
-                            
-                            // Terminology toggle (only in transcribe mode if terms exist)
-                            if appState.recordingMode == .transcribe && !appState.customTerminology.isEmpty {
-                                TerminologyToggle(isEnabled: $appState.enableTerminologyCorrection)
-                            }
-                            
-                            // Output mode toggle (paste vs chat)
-                            if appState.recordingMode != .askGPT {
-                                OutputModeToggle(autoPaste: $appState.autoPasteResult)
-                            }
-                        }
-                    }
-                    
-                    Text("Esc/Q — cancel")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                        .padding(.top, 2)
-                }
-                .padding(.top, 4)
+                recordingControls
+                Text("Esc/Q — cancel")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 2)
             }
         }
         .padding(20)
@@ -480,8 +613,37 @@ struct RecordingOverlayView: View {
                     lineWidth: appState.recordingMode == .askGPT ? 0 : 3
                 )
         )
+        .overlay(alignment: .topLeading) { devBadge }
+        .overlay(alignment: .topTrailing) { menuButton }
     }
-    
+
+    /// "DEV" pill shown only in the dev build, so it's obvious which app this is.
+    @ViewBuilder
+    private var devBadge: some View {
+        if let badge = AppEnvironment.badge {
+            Text(badge)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.orange))
+                .padding(12)
+        }
+    }
+
+    /// Quick access to Settings from the popup, since the menu-bar icon can be
+    /// hard to find (especially with two Whisper builds running).
+    private var menuButton: some View {
+        Button(action: { AppDelegate.shared?.openSettings() }) {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .padding(12)
+        .help("Open Settings")
+    }
+
     /// Border color based on output mode
     private var outputBorderColor: Color {
         if appState.recordingMode == .askGPT {
@@ -533,14 +695,14 @@ struct RecordingOverlayView: View {
         case .transcribing:
             return "Transcribing..."
         case .processing:
-            return "Processing..."
+            return processingStatus.title
         case .showingResult:
             return "Done"
         case .error:
             return "Error"
         }
     }
-    
+
     private var subtitleText: String {
         let hotkey = currentHotkeyDisplayString()
         switch appState.processingState {
@@ -551,12 +713,51 @@ struct RecordingOverlayView: View {
         case .transcribing:
             return "Converting speech to text..."
         case .processing:
-            return "Refining with AI..."
+            return processingStatus.subtitle
         case .showingResult:
             return ""
         case .error(let msg):
             return msg
         }
+    }
+
+    /// Mode-specific status/subtitle shown while GPT is working, so it doesn't
+    /// always read "Refining with AI…" regardless of what's actually happening.
+    private var processingStatus: (title: String, subtitle: String) {
+        switch appState.recordingMode {
+        case .transcribe:
+            if appState.whisperLanguage != "auto" {
+                let lang = AppState.languageName(for: appState.whisperLanguage)
+                return ("Translating", "Translating to \(lang)…")
+            }
+            return ("Refining", "Polishing your text…")
+        case .askGPT:
+            return ("Thinking", "Asking GPT…")
+        case .respond:
+            return ("Writing", "Drafting a response…")
+        case .code:
+            return ("Coding", "Generating code…")
+        case .process:
+            return ("Processing", "Working on your clipboard…")
+        }
+    }
+}
+
+// MARK: - Live "listening" indicator
+
+/// A continuously pulsing red dot — animates on its own (independent of audio)
+/// so the live view never looks frozen, even between spoken words.
+struct LivePulse: View {
+    @State private var animating = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 12, height: 12)
+            .scaleEffect(animating ? 1.0 : 0.6)
+            .opacity(animating ? 1.0 : 0.4)
+            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: animating)
+            .onAppear { animating = true }
     }
 }
 
@@ -645,6 +846,34 @@ struct AudioBar: View {
 }
 
 // MARK: - Language Button
+
+/// A small tappable pill used in the popup's CAPTURE row (live/classic, engine).
+struct CapturePill: View {
+    let label: String
+    let systemImage: String
+    let isActive: Bool
+    let activeColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10))
+                Text(label)
+                    .font(.system(size: 11, weight: isActive ? .semibold : .regular))
+            }
+            .foregroundColor(isActive ? .white : .secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isActive ? activeColor : Color.gray.opacity(0.25))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 struct LanguageButton: View {
     let key: String
@@ -1102,10 +1331,12 @@ class RecordingWindowController: NSObject {
                 .environmentObject(AppState.shared)
             
             let hostingView = NSHostingView(rootView: contentView)
-            hostingView.frame = NSRect(x: 0, y: 0, width: 450, height: 450)
-            
+            // Window is transparent/borderless; size it to the tallest card (the
+            // live view with controls) so nothing clips. Cards center within it.
+            hostingView.frame = NSRect(x: 0, y: 0, width: 460, height: 660)
+
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 450, height: 450),
+                contentRect: NSRect(x: 0, y: 0, width: 460, height: 660),
                 styleMask: [.borderless],
                 backing: .buffered,
                 defer: false
@@ -1175,25 +1406,15 @@ class RecordingWindowController: NSObject {
                     return nil
                 }
                 
-                // Language selection: 0 = auto, 1 = English, 2 = Russian
-                if event.keyCode == 29 { // 0
-                    Task { @MainActor in
-                        AppState.shared.whisperLanguage = "auto"
-                    }
-                    return nil
+                // Language selection: 0 = auto, 1 = English, 2 = Russian.
+                // In live mode this is the OUTPUT language (applied as a translation
+                // on stop); in the classic flow it's the Whisper transcription hint.
+                func setLanguage(_ code: String) {
+                    Task { @MainActor in AppState.shared.whisperLanguage = code }
                 }
-                if event.keyCode == 18 { // 1
-                    Task { @MainActor in
-                        AppState.shared.whisperLanguage = "en"
-                    }
-                    return nil
-                }
-                if event.keyCode == 19 { // 2
-                    Task { @MainActor in
-                        AppState.shared.whisperLanguage = "ru"
-                    }
-                    return nil
-                }
+                if event.keyCode == 29 { setLanguage("auto"); return nil } // 0
+                if event.keyCode == 18 { setLanguage("en"); return nil }   // 1
+                if event.keyCode == 19 { setLanguage("ru"); return nil }   // 2
                 
                 // Mode selection: T=Transcribe, A=Ask, R=Respond, C=Code, P=Process
                 if event.keyCode == 17 { // T

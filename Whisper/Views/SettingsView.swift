@@ -60,13 +60,68 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
+            Section("Live (Real-Time) Transcription") {
+                Toggle("Stream transcription in real time", isOn: $appState.liveModeEnabled)
+
+                Picker("Engine", selection: $appState.liveEngineRaw) {
+                    ForEach(LiveTranscriptionEngine.allCases, id: \.rawValue) { engine in
+                        Text(engine.displayName).tag(engine.rawValue)
+                    }
+                }
+                .disabled(!appState.liveModeEnabled)
+
+                if appState.liveEngine == .cloud {
+                    Picker("Cloud model", selection: $appState.liveCloudModel) {
+                        Text("GPT-Realtime Whisper (Newest, recommended)").tag("gpt-realtime-whisper")
+                        Text("GPT-4o Transcribe").tag("gpt-4o-transcribe")
+                        Text("GPT-4o mini Transcribe (Faster, cheaper)").tag("gpt-4o-mini-transcribe")
+                    }
+                    .disabled(!appState.liveModeEnabled)
+
+                    Text("Used for transcription (LANGUAGE = Auto). With a non-Auto output language, translation is handled live by gpt-realtime-translate instead.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Picker("Local model", selection: $appState.liveLocalModel) {
+                        Text("Tiny (Fastest, lowest quality)").tag("tiny")
+                        Text("Base (Recommended)").tag("base")
+                        Text("Small (Slower, better quality)").tag("small")
+                    }
+                    .disabled(!appState.liveModeEnabled)
+                }
+
+                Text("When on, the record hotkey streams text live as you speak. Cloud uses OpenAI's Realtime API; Local runs WhisperKit on-device (downloads the model on first use; requires macOS 15+). The LANGUAGE keys (0/1/2) set the output language: with Cloud + a non-Auto language the text is translated live (gpt-realtime-translate); otherwise it's translated on stop.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section("Refinement & Translation") {
+                Picker("Engine", selection: $appState.postProcessingEngineRaw) {
+                    ForEach(PostProcessingEngine.allCases, id: \.rawValue) { engine in
+                        Text(engine.displayName).tag(engine.rawValue)
+                    }
+                }
+
+                if appState.postProcessingEngine == .local, let reason = LocalRefiner.unavailableReason {
+                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+
+                Text("Cloud uses OpenAI GPT (best quality). Local uses on-device Apple Intelligence — private and free, falls back to Cloud if unavailable. Applies to transcript refinement and live output-language translation.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section("GPT Post-Processing") {
                 Toggle("Enable GPT post-processing", isOn: $appState.enableGPTProcessing)
-                
+
                 Picker("Model", selection: $appState.gptModel) {
-                    Text("GPT-4o Mini (Faster, Cheaper)").tag("gpt-4o-mini")
-                    Text("GPT-4o (Better Quality)").tag("gpt-4o")
+                    Text("GPT-5.4 Nano (Fastest, Cheapest)").tag("gpt-5.4-nano")
+                    Text("GPT-5.4 Mini (Recommended)").tag("gpt-5.4-mini")
+                    Text("GPT-5.4 (Better Quality)").tag("gpt-5.4")
+                    Text("GPT-5.5 (Best)").tag("gpt-5.5")
                 }
                 .disabled(!appState.enableGPTProcessing)
                 

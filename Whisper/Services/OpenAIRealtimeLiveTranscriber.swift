@@ -23,6 +23,11 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
 
     private var confirmed = ""   // text from .completed events
     private var pending = ""     // current in-progress deltas
+    // True once microphone capture started. Guards stop() from touching
+    // engine.inputNode for file-driven sessions (startSessionOnly + streamPCMFile),
+    // since merely accessing inputNode instantiates it and triggers the mic
+    // permission prompt — unwanted when we only stream a fixture.
+    private var audioStarted = false
 
     private let targetFormat = AVAudioFormat(
         commonFormat: .pcmFormatInt16, sampleRate: 24000, channels: 1, interleaved: true
@@ -96,8 +101,13 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     }
 
     func stop() async -> String {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        // Only tear down the engine if we actually started capture; touching
+        // engine.inputNode otherwise would needlessly trigger the mic prompt.
+        if audioStarted {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            audioStarted = false
+        }
         send(["type": "input_audio_buffer.commit"])
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
@@ -143,6 +153,7 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
         engine.prepare()
         do {
             try engine.start()
+            audioStarted = true
         } catch {
             throw LiveTranscriptionError.audioEngineFailed(error.localizedDescription)
         }

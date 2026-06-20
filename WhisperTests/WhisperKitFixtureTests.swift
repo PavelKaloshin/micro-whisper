@@ -4,10 +4,11 @@ import WhisperKit
 
 /// Layer 3 — on-device transcription of a recorded fixture via WhisperKit.
 ///
-/// Opt-in (downloads the `base` model on first run):
-///   RUN_WHISPERKIT_TESTS=1  and a fixture at WhisperTests/Fixtures/<name>.
-/// Skips cleanly when the flag or fixture is absent, so the default suite stays
-/// fast and offline.
+/// Opt-in (downloads the `base` model on first run). Gated on RUN_WHISPERKIT_TESTS=1
+/// plus a fixture at WhisperTests/Fixtures/<name>. Run it via `make test-integration`
+/// (the macOS test host reads the gate from the scheme, not the shell — see
+/// scripts/run-integration-tests.sh). Skips cleanly when the flag or fixture is
+/// absent, so the default suite stays fast and offline.
 final class WhisperKitFixtureTests: XCTestCase {
 
     func testTranscribesEnglishFixture() async throws {

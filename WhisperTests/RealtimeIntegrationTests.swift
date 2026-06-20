@@ -5,9 +5,12 @@ import AVFoundation
 /// Layer 4 — end-to-end OpenAI Realtime transcription: connect, stream a fixture
 /// audio file (no live mic), and assert a non-empty transcript comes back.
 ///
-/// Opt-in (real network + cost):
-///   OPENAI_API_KEY=sk-…  RUN_REALTIME_TESTS=1  and WhisperTests/Fixtures/hello_en.wav.
-/// Skips cleanly otherwise.
+/// Opt-in (real network + cost). The gate is the RUN_REALTIME_TESTS=1 env var plus
+/// OPENAI_API_KEY, but the macOS test host only reads the scheme's env block, not the
+/// shell — so run it via:
+///   OPENAI_API_KEY=sk-…  make test-integration
+/// (see scripts/run-integration-tests.sh). Needs WhisperTests/Fixtures/hello_en.wav.
+/// Skips cleanly when the flag is absent.
 @MainActor
 final class RealtimeIntegrationTests: XCTestCase {
 

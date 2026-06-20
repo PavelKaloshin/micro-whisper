@@ -23,14 +23,19 @@ final class RealtimeIntegrationTests: XCTestCase {
             apiKeyProvider: { key }
         )
         var latest = ""
+        var transcriberError: String?
         transcriber.onPartial = { latest = $0 }
+        transcriber.onError = { transcriberError = $0.localizedDescription }
 
         try transcriber.startSessionOnly()
         try transcriber.streamPCMFile(url)
         try await Task.sleep(nanoseconds: 6_000_000_000) // let events arrive
         let final = await transcriber.stop()
 
-        XCTAssertFalse(final.isEmpty && latest.isEmpty, "expected some transcript from Realtime API")
+        XCTAssertFalse(
+            final.isEmpty && latest.isEmpty,
+            "expected some transcript from Realtime API; transcriber error: \(transcriberError ?? "none")"
+        )
         print("Realtime transcript: final=\(final) latest=\(latest)")
     }
 

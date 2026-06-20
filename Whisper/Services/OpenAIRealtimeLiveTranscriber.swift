@@ -59,7 +59,8 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     private func openSocket(key: String) {
         var request = URLRequest(url: URL(string: "wss://api.openai.com/v1/realtime?intent=transcription")!)
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
+        // GA Realtime API: the beta `OpenAI-Beta: realtime=v1` header is gone — sending
+        // it now makes the server reject the connection (beta_api_shape_disabled).
         let ws = URLSession.shared.webSocketTask(with: request)
         webSocket = ws
         ws.resume()
@@ -109,11 +110,19 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
     private func configureSession() {
         var transcription: [String: Any] = ["model": model]
         if let language { transcription["language"] = language }
+        // GA shape: `session.update` with a typed transcription session and the audio
+        // input config nested under `audio.input` (the beta used a flat
+        // `transcription_session.update` with `input_audio_format`).
         send([
-            "type": "transcription_session.update",
+            "type": "session.update",
             "session": [
-                "input_audio_format": "pcm16",
-                "input_audio_transcription": transcription
+                "type": "transcription",
+                "audio": [
+                    "input": [
+                        "format": ["type": "audio/pcm", "rate": 24000],
+                        "transcription": transcription
+                    ]
+                ]
             ]
         ])
     }
@@ -203,6 +212,10 @@ final class OpenAIRealtimeLiveTranscriber: LiveTranscriber {
             pending = ""
             onPartial?(confirmed.trimmingCharacters(in: .whitespacesAndNewlines))
         case .failure(let message):
+            // Server VAD auto-commits speech segments, so the explicit commit we send
+            // on stop()/streamPCMFile often lands on an already-empty buffer. That
+            // "buffer too small" error is expected and not worth surfacing.
+            if message.contains("buffer too small") { break }
             onError?(LiveTranscriptionError.connectionFailed(message))
         case .ignored:
             break

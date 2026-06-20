@@ -221,6 +221,13 @@ class AppState: ObservableObject {
     @AppStorage("liveTranscriptionEngine") var liveEngineRaw: String = "cloud"
     @AppStorage("liveCloudModel") var liveCloudModel: String = "gpt-realtime-whisper"
     @AppStorage("liveLocalModel") var liveLocalModel: String = "base"
+    @AppStorage("postProcessingEngine") var postProcessingEngineRaw: String = "cloud"
+
+    /// Engine for refinement/translation, backed by `postProcessingEngineRaw`.
+    var postProcessingEngine: PostProcessingEngine {
+        get { PostProcessingEngine(rawValue: postProcessingEngineRaw) ?? .cloud }
+        set { postProcessingEngineRaw = newValue.rawValue }
+    }
 
     /// Selected live backend, backed by `liveEngineRaw` (@AppStorage stores the raw value).
     var liveEngine: LiveTranscriptionEngine {
@@ -548,11 +555,7 @@ class AppState: ObservableObject {
                         """
                     }
                     
-                    finalText = try await openAIService.postProcess(
-                        text: transcription,
-                        prompt: basePrompt,
-                        model: gptModel
-                    )
+                    finalText = try await refineText(transcription, instructions: basePrompt)
                 }
                 
                 lastProcessedText = finalText
@@ -735,7 +738,16 @@ class AppState: ObservableObject {
         Translate the following text into \(name). Preserve the meaning, tone, and any
         formatting. Return only the translation, with no explanations or quotes.
         """
-        return try await openAIService.postProcess(text: text, prompt: prompt, model: gptModel)
+        return try await refineText(text, instructions: prompt)
+    }
+
+    /// Route refinement/translation through the selected engine: on-device Apple
+    /// Intelligence when chosen and available, otherwise OpenAI GPT.
+    private func refineText(_ text: String, instructions: String) async throws -> String {
+        if postProcessingEngine == .local && LocalRefiner.isAvailable {
+            return try await LocalRefiner.run(text: text, instructions: instructions)
+        }
+        return try await openAIService.postProcess(text: text, prompt: instructions, model: gptModel)
     }
 
     /// Human-readable language name for a stored language code.

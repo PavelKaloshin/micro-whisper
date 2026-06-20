@@ -92,9 +92,27 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             }
 
+            Section("Refinement & Translation") {
+                Picker("Engine", selection: $appState.postProcessingEngineRaw) {
+                    ForEach(PostProcessingEngine.allCases, id: \.rawValue) { engine in
+                        Text(engine.displayName).tag(engine.rawValue)
+                    }
+                }
+
+                if appState.postProcessingEngine == .local, let reason = LocalRefiner.unavailableReason {
+                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+
+                Text("Cloud uses OpenAI GPT (best quality). Local uses on-device Apple Intelligence — private and free, falls back to Cloud if unavailable. Applies to transcript refinement and live output-language translation.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section("GPT Post-Processing") {
                 Toggle("Enable GPT post-processing", isOn: $appState.enableGPTProcessing)
-                
+
                 Picker("Model", selection: $appState.gptModel) {
                     Text("GPT-5.4 Nano (Fastest, Cheapest)").tag("gpt-5.4-nano")
                     Text("GPT-5.4 Mini (Recommended)").tag("gpt-5.4-mini")

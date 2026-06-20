@@ -23,6 +23,7 @@
 		C1000001 /* LiveTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000001 /* LiveTranscriber.swift */; };
 		C1000002 /* WhisperKitLiveTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000002 /* WhisperKitLiveTranscriber.swift */; };
 		C1000003 /* OpenAIRealtimeLiveTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000003 /* OpenAIRealtimeLiveTranscriber.swift */; };
+		C1000004 /* LocalRefiner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000004 /* LocalRefiner.swift */; };
 		B1000001 /* StubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001 /* StubURLProtocol.swift */; };
 		B1000002 /* OpenAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000002 /* OpenAIServiceTests.swift */; };
 		B1000003 /* ModeLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000003 /* ModeLogicTests.swift */; };
@@ -51,6 +52,7 @@
 		C2000001 /* LiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriber.swift; sourceTree = "<group>"; };
 		C2000002 /* WhisperKitLiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperKitLiveTranscriber.swift; sourceTree = "<group>"; };
 		C2000003 /* OpenAIRealtimeLiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIRealtimeLiveTranscriber.swift; sourceTree = "<group>"; };
+		C2000004 /* LocalRefiner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalRefiner.swift; sourceTree = "<group>"; };
 		B2000000 /* WhisperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhisperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2000001 /* StubURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubURLProtocol.swift; sourceTree = "<group>"; };
 		B2000002 /* OpenAIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIServiceTests.swift; sourceTree = "<group>"; };
@@ -142,6 +144,7 @@
 				C2000001 /* LiveTranscriber.swift */,
 				C2000002 /* WhisperKitLiveTranscriber.swift */,
 				C2000003 /* OpenAIRealtimeLiveTranscriber.swift */,
+				C2000004 /* LocalRefiner.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -292,6 +295,7 @@
 				C1000001 /* LiveTranscriber.swift in Sources */,
 				C1000002 /* WhisperKitLiveTranscriber.swift in Sources */,
 				C1000003 /* OpenAIRealtimeLiveTranscriber.swift in Sources */,
+				C1000004 /* LocalRefiner.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

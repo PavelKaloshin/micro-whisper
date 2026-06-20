@@ -59,13 +59,31 @@ enum LocalRefiner {
         #endif
     }
 
-    /// Run a single instruction over `text` and return the model's output.
-    /// Throws `LocalRefinerError.unavailable` when the model can't be used.
+    /// Run a single transform instruction over `text` and return the model's
+    /// output. Throws `LocalRefinerError.unavailable` when the model can't be used.
     static func run(text: String, instructions: String) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *), SystemLanguageModel.default.availability == .available {
-            let session = LanguageModelSession(instructions: instructions)
-            let response = try await session.respond(to: text)
+            // Pin the model into a pure text-transformer role. Without this it tends
+            // to *answer* the text (treating it as a message) instead of applying the
+            // instruction. The task + text go in the prompt, clearly delimited.
+            let session = LanguageModelSession(instructions: """
+            You are a text-processing tool, not an assistant. Apply the given \
+            instruction to the text between the markers and output ONLY the resulting \
+            text. Never answer, reply to, explain, or converse with the text — only \
+            transform it.
+            """)
+            let prompt = """
+            INSTRUCTION:
+            \(instructions)
+
+            <<<TEXT
+            \(text)
+            TEXT>>>
+
+            Output only the transformed text.
+            """
+            let response = try await session.respond(to: prompt)
             return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         #endif

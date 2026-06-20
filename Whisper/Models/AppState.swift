@@ -752,8 +752,10 @@ class AppState: ObservableObject {
     private func translate(_ text: String, to code: String) async throws -> String {
         let name = Self.languageName(for: code)
         let prompt = """
-        Translate the following text into \(name). Preserve the meaning, tone, and any
-        formatting. Return only the translation, with no explanations or quotes.
+        Translate the following text into \(name), preserving meaning, tone, and formatting.
+        IMPORTANT: if the text is already in \(name), return it essentially unchanged —
+        only fix obvious transcription errors and punctuation, do NOT paraphrase or reword.
+        Return only the result, with no explanations or quotes.
         """
         return try await refineText(text, instructions: prompt)
     }

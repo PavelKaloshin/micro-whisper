@@ -73,7 +73,15 @@ final class WhisperKitLiveTranscriber: LiveTranscriber {
 
         var options = DecodingOptions()
         options.task = .transcribe
-        if let language { options.language = language }
+        if let language {
+            options.language = language
+        } else {
+            // No explicit language: actually detect it. Otherwise WhisperKit's
+            // prefill defaults to English, and transcribing non-English speech as
+            // English makes Whisper translate to English instead of transcribing
+            // the spoken language.
+            options.detectLanguage = true
+        }
 
         let transcriber = AudioStreamTranscriber(
             audioEncoder: pipe.audioEncoder,

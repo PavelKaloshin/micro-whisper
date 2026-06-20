@@ -33,9 +33,28 @@ struct MenuBarView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .disabled(appState.processingState == .transcribing || appState.processingState == .processing)
-            
+
             Divider()
-            
+
+            // Live transcription quick toggle
+            Toggle(isOn: $appState.liveModeEnabled) {
+                HStack {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .foregroundColor(appState.liveModeEnabled ? .accentColor : .primary)
+                    Text("Live transcription")
+                    Spacer()
+                    Text(appState.liveEngine.displayName)
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                }
+            }
+            .toggleStyle(.switch)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .disabled(appState.isRecording)
+
+            Divider()
+
             // Last transcription preview
             if !appState.lastProcessedText.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {

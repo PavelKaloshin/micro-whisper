@@ -25,11 +25,16 @@ struct SettingsView: View {
                     Label("General", systemImage: "gear")
                 }
             
+            historyTab
+                .tabItem {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                }
+
             terminologyTab
                 .tabItem {
                     Label("Terms", systemImage: "text.book.closed")
                 }
-            
+
             apiTab
                 .tabItem {
                     Label("API", systemImage: "key")
@@ -40,7 +45,9 @@ struct SettingsView: View {
                     Label("Permissions", systemImage: "lock.shield")
                 }
         }
-        .frame(width: 500, height: 450)
+        // A bit taller/wider than before so the History list shows several entries
+        // without the other tabs feeling cramped.
+        .frame(width: 540, height: 520)
         .onAppear {
             loadAPIKey()
         }
@@ -49,14 +56,24 @@ struct SettingsView: View {
     // MARK: - General Tab
     private var generalTab: some View {
         Form {
-            Section("Whisper Transcription") {
-                Picker("Language", selection: $appState.whisperLanguage) {
+            Section("Translation") {
+                Toggle("Translate the result into the output language", isOn: $appState.enableTranslation)
+
+                Picker("Output language", selection: $appState.whisperLanguage) {
                     Text("Auto-detect (0)").tag("auto")
                     Text("English (1)").tag("en")
                     Text("Russian (2)").tag("ru")
                 }
-                
-                Text("During recording: press 0 for auto, 1 for English, 2 for Russian.")
+                .disabled(!appState.enableTranslation)
+
+                if appState.enableTranslation && appState.whisperLanguage == "auto" {
+                    Label("Pick a language — with Auto there is nothing to translate into.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+
+                Text("Off by default: speech is always transcribed in the language you speak. With translation on, the transcript is rewritten into the output language in the same pass as refinement. During recording: L toggles translation, 0 = auto, 1 = English, 2 = Russian.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -79,7 +96,7 @@ struct SettingsView: View {
                     }
                     .disabled(!appState.liveModeEnabled)
 
-                    Text("Used for transcription (LANGUAGE = Auto). With a non-Auto output language, translation is handled live by gpt-realtime-translate instead.")
+                    Text("Used for streaming transcription; the spoken language is auto-detected.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else {
@@ -91,7 +108,7 @@ struct SettingsView: View {
                     .disabled(!appState.liveModeEnabled)
                 }
 
-                Text("When on, the record hotkey streams text live as you speak. Cloud uses OpenAI's Realtime API; Local runs WhisperKit on-device (downloads the model on first use; requires macOS 15+). The LANGUAGE keys (0/1/2) set the output language: with Cloud + a non-Auto language the text is translated live (gpt-realtime-translate); otherwise it's translated on stop.")
+                Text("When on, the record hotkey streams text live as you speak. Cloud uses OpenAI's Realtime API; Local runs WhisperKit on-device (downloads the model on first use; requires macOS 15+). Refinement and translation (if enabled) run once you stop.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -109,7 +126,7 @@ struct SettingsView: View {
                         .foregroundColor(.orange)
                 }
 
-                Text("Cloud uses OpenAI GPT (best quality). Local uses on-device Apple Intelligence — private and free, falls back to Cloud if unavailable. Applies to transcript refinement and live output-language translation.")
+                Text("Cloud uses OpenAI GPT (best quality). Local uses on-device Apple Intelligence — private and free, falls back to Cloud if unavailable. Applies to transcript refinement and output-language translation.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -203,6 +220,58 @@ struct SettingsView: View {
         .padding()
     }
     
+    // MARK: - History Tab
+
+    /// Every dictation's raw speech-to-text output, kept so a bad refinement or
+    /// translation never means re-dictating: copy the raw text and move on.
+    private var historyTab: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Raw dictation history")
+                .font(.headline)
+
+            Text("The speech-to-text output exactly as it arrived — before refinement, formatting and translation. Kept for your last \(AppState.historyLimit) dictations, on this Mac only.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if appState.transcriptHistory.isEmpty {
+                Spacer()
+                Text("Nothing dictated yet.")
+                    .foregroundColor(.secondary)
+                    .italic()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(appState.transcriptHistory) { entry in
+                            HistoryRow(entry: entry) { text in
+                                appState.copyToClipboard(text)
+                            }
+                            Divider()
+                        }
+                    }
+                }
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                .cornerRadius(8)
+
+                HStack {
+                    Button("Clear History") {
+                        appState.clearHistory()
+                    }
+                    .foregroundColor(.red)
+
+                    Spacer()
+
+                    Text("\(appState.transcriptHistory.count) entries")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+    }
+
     // MARK: - Terminology Tab
     private var terminologyTab: some View {
         Form {
@@ -498,6 +567,80 @@ struct SettingsView: View {
         if let monitor = hotkeyMonitor {
             NSEvent.removeMonitor(monitor)
             hotkeyMonitor = nil
+        }
+    }
+}
+
+/// One dictation in the History tab: what was heard, what was pasted, and a copy
+/// button for each. `onCopy` goes through AppState so the clipboard write stays in
+/// one place (no paste, no window juggling).
+struct HistoryRow: View {
+    let entry: AppState.TranscriptEntry
+    let onCopy: (String) -> Void
+
+    @State private var copied: String?
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    private var modeName: String {
+        RecordingMode(rawValue: entry.mode)?.displayName ?? entry.mode
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(Self.dateFormatter.string(from: entry.date))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(modeName)
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.gray.opacity(0.2)))
+                Spacer()
+                if let copied {
+                    Text("✓ \(copied) copied")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                }
+            }
+
+            Text(entry.raw)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .lineLimit(4)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button("Copy raw") { copy(entry.raw, label: "Raw") }
+
+                if let processed = entry.processed, entry.wasChanged {
+                    Button("Copy processed") { copy(processed, label: "Processed") }
+                } else if entry.processed == nil {
+                    Text("Processing failed — only the raw text was kept")
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                } else {
+                    Text("Result identical to raw")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+    }
+
+    private func copy(_ text: String, label: String) {
+        onCopy(text)
+        copied = label
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if copied == label { copied = nil }
         }
     }
 }

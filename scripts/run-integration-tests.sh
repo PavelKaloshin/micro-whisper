@@ -17,7 +17,8 @@
 #   ./scripts/run-integration-tests.sh
 #   ./scripts/run-integration-tests.sh -only-testing:WhisperTests/RealtimeIntegrationTests
 #
-# RUN_WHISPERKIT_TESTS requires no key; the Realtime test requires OPENAI_API_KEY.
+# RUN_WHISPERKIT_TESTS requires no key; the Realtime and OpenAI REST tests
+# (RUN_REALTIME_TESTS / RUN_OPENAI_TESTS) require OPENAI_API_KEY.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -51,6 +52,7 @@ key = html.escape(os.environ.get("OPENAI_API_KEY", ""), quote=True)
 block = '''      <EnvironmentVariables>
          <EnvironmentVariable key = "RUN_WHISPERKIT_TESTS" value = "1" isEnabled = "YES"></EnvironmentVariable>
          <EnvironmentVariable key = "RUN_REALTIME_TESTS" value = "1" isEnabled = "YES"></EnvironmentVariable>
+         <EnvironmentVariable key = "RUN_OPENAI_TESTS" value = "1" isEnabled = "YES"></EnvironmentVariable>
          <EnvironmentVariable key = "OPENAI_API_KEY" value = "%s" isEnabled = "YES"></EnvironmentVariable>
       </EnvironmentVariables>
 ''' % key

@@ -353,14 +353,14 @@ struct RecordingOverlayView: View {
                 Text(appState.isPreparingLive ? "Loading model…" : "Listening…")
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
-                if appState.whisperLanguage != "auto" {
+                if appState.shouldTranslate {
                     Text("→ \(appState.whisperLanguage.uppercased())")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(Color.blue))
-                        .help("Output will be translated to this language")
+                        .help("Output will be translated to this language (L to turn off)")
                 }
                 Text(appState.liveEngine.shortName)
                     .font(.system(size: 11, weight: .medium))
@@ -459,16 +459,23 @@ struct RecordingOverlayView: View {
 
             Divider().opacity(0.3)
 
-            // Section 1: Language
+            // Section 1: Translation (off by default) and its target language.
+            // Transcription itself always auto-detects the spoken language, so this
+            // row is purely "translate the result into X".
             VStack(spacing: 4) {
-                Text("LANGUAGE")
+                Text("TRANSLATE")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundColor(.secondary.opacity(0.7))
                 HStack(spacing: 5) {
-                    LanguageButton(key: "0", label: "Auto", code: "auto", currentLanguage: appState.whisperLanguage)
+                    TranslateToggle(
+                        isEnabled: $appState.enableTranslation,
+                        language: appState.whisperLanguage
+                    )
                     LanguageButton(key: "1", label: "EN", code: "en", currentLanguage: appState.whisperLanguage)
                     LanguageButton(key: "2", label: "RU", code: "ru", currentLanguage: appState.whisperLanguage)
+                    LanguageButton(key: "0", label: "Auto", code: "auto", currentLanguage: appState.whisperLanguage)
                 }
+                .opacity(appState.enableTranslation ? 1 : 0.45)
             }
 
             Divider().opacity(0.3)
@@ -726,7 +733,7 @@ struct RecordingOverlayView: View {
     private var processingStatus: (title: String, subtitle: String) {
         switch appState.recordingMode {
         case .transcribe:
-            if appState.whisperLanguage != "auto" {
+            if appState.shouldTranslate {
                 let lang = AppState.languageName(for: appState.whisperLanguage)
                 return ("Translating", "Translating to \(lang)…")
             }
@@ -872,6 +879,44 @@ struct CapturePill: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The translation master switch (L). Off by default — picking a language alone must
+/// not silently rewrite the dictation. Shows the target when armed, and warns when
+/// translation is on but the language is still Auto (nothing to translate into).
+struct TranslateToggle: View {
+    @Binding var isEnabled: Bool
+    let language: String
+
+    private var isArmed: Bool { isEnabled && language != "auto" }
+
+    private var label: String {
+        guard isEnabled else { return "Off" }
+        return language == "auto" ? "Pick a language" : "→ \(language.uppercased())"
+    }
+
+    var body: some View {
+        Button(action: { isEnabled.toggle() }) {
+            HStack(spacing: 4) {
+                Text("L")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundColor(isArmed ? .white.opacity(0.7) : .secondary)
+                Image(systemName: isArmed ? "globe" : "globe.badge.chevron.backward")
+                    .font(.system(size: 10))
+                Text(label)
+                    .font(.system(size: 10, weight: isArmed ? .semibold : .regular))
+            }
+            .foregroundColor(isArmed ? .white : .secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isArmed ? Color.blue : Color.gray.opacity(0.25))
+            )
+        }
+        .buttonStyle(.plain)
+        .help("L: Translate the result into the selected language (off = keep the spoken language)")
     }
 }
 
@@ -1406,16 +1451,22 @@ class RecordingWindowController: NSObject {
                     return nil
                 }
                 
-                // Language selection: 0 = auto, 1 = English, 2 = Russian.
-                // In live mode this is the OUTPUT language (applied as a translation
-                // on stop); in the classic flow it's the Whisper transcription hint.
+                // Output language: 0 = auto, 1 = English, 2 = Russian. Transcription
+                // always auto-detects the spoken language, so this only picks the
+                // TARGET for the translation step, which L arms/disarms.
                 func setLanguage(_ code: String) {
                     Task { @MainActor in AppState.shared.whisperLanguage = code }
                 }
                 if event.keyCode == 29 { setLanguage("auto"); return nil } // 0
                 if event.keyCode == 18 { setLanguage("en"); return nil }   // 1
                 if event.keyCode == 19 { setLanguage("ru"); return nil }   // 2
-                
+
+                // L = Toggle translation of the result into the selected language
+                if event.keyCode == 37 { // L
+                    Task { @MainActor in AppState.shared.enableTranslation.toggle() }
+                    return nil
+                }
+
                 // Mode selection: T=Transcribe, A=Ask, R=Respond, C=Code, P=Process
                 if event.keyCode == 17 { // T
                     Task { @MainActor in

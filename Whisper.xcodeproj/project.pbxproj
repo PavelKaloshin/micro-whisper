@@ -31,6 +31,9 @@
 		B1000005 /* RealtimeParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000005 /* RealtimeParsingTests.swift */; };
 		B1000006 /* AudioConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000006 /* AudioConversionTests.swift */; };
 		B1000009 /* ModeProcessingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000009 /* ModeProcessingTests.swift */; };
+		B100000A /* RefinePromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000A /* RefinePromptTests.swift */; };
+		B100000B /* OpenAIServiceIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000B /* OpenAIServiceIntegrationTests.swift */; };
+		B100000C /* AppStateLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200000C /* AppStateLogicTests.swift */; };
 		B1000007 /* WhisperKitFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000007 /* WhisperKitFixtureTests.swift */; };
 		B1000008 /* RealtimeIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000008 /* RealtimeIntegrationTests.swift */; };
 /* End PBXBuildFile section */
@@ -62,6 +65,9 @@
 		B2000005 /* RealtimeParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeParsingTests.swift; sourceTree = "<group>"; };
 		B2000006 /* AudioConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConversionTests.swift; sourceTree = "<group>"; };
 		B2000009 /* ModeProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeProcessingTests.swift; sourceTree = "<group>"; };
+		B200000A /* RefinePromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefinePromptTests.swift; sourceTree = "<group>"; };
+		B200000B /* OpenAIServiceIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIServiceIntegrationTests.swift; sourceTree = "<group>"; };
+		B200000C /* AppStateLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateLogicTests.swift; sourceTree = "<group>"; };
 		B2000007 /* WhisperKitFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperKitFixtureTests.swift; sourceTree = "<group>"; };
 		B2000008 /* RealtimeIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -179,6 +185,9 @@
 				B2000005 /* RealtimeParsingTests.swift */,
 				B2000006 /* AudioConversionTests.swift */,
 				B2000009 /* ModeProcessingTests.swift */,
+				B200000A /* RefinePromptTests.swift */,
+				B200000B /* OpenAIServiceIntegrationTests.swift */,
+				B200000C /* AppStateLogicTests.swift */,
 				B2000007 /* WhisperKitFixtureTests.swift */,
 				B2000008 /* RealtimeIntegrationTests.swift */,
 				B2000001 /* StubURLProtocol.swift */,
@@ -312,6 +321,9 @@
 				B1000005 /* RealtimeParsingTests.swift in Sources */,
 				B1000006 /* AudioConversionTests.swift in Sources */,
 				B1000009 /* ModeProcessingTests.swift in Sources */,
+				B100000A /* RefinePromptTests.swift in Sources */,
+				B100000B /* OpenAIServiceIntegrationTests.swift in Sources */,
+				B100000C /* AppStateLogicTests.swift in Sources */,
 				B1000007 /* WhisperKitFixtureTests.swift in Sources */,
 				B1000008 /* RealtimeIntegrationTests.swift in Sources */,
 				B1000001 /* StubURLProtocol.swift in Sources */,

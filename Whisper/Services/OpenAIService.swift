@@ -31,7 +31,21 @@ class OpenAIService {
     private var apiKey: String? {
         apiKeyProvider()
     }
-    
+
+    /// MIME type for an audio file extension, for the transcription multipart upload.
+    /// Covers the formats Whisper accepts; falls back to a generic audio type.
+    static func audioMIMEType(forExtension ext: String) -> String {
+        switch ext.lowercased() {
+        case "m4a", "mp4": return "audio/m4a"
+        case "wav":        return "audio/wav"
+        case "mp3", "mpga": return "audio/mpeg"
+        case "flac":       return "audio/flac"
+        case "ogg", "oga": return "audio/ogg"
+        case "webm":       return "audio/webm"
+        default:           return "audio/m4a"
+        }
+    }
+
     // MARK: - Whisper Transcription
     /// Transcribes audio to text
     /// - Parameters:
@@ -73,11 +87,14 @@ class OpenAIService {
             body.append("\(prompt)\r\n".data(using: .utf8)!)
         }
         
-        // Add audio file
+        // Add audio file. Whisper picks its decoder from the filename extension, so
+        // send the real name/MIME (production records .m4a; tests feed a .wav fixture).
         let audioData = try Data(contentsOf: audioURL)
+        let ext = audioURL.pathExtension.isEmpty ? "m4a" : audioURL.pathExtension.lowercased()
+        let filename = "audio.\(ext)"
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(Self.audioMIMEType(forExtension: ext))\r\n\r\n".data(using: .utf8)!)
         body.append(audioData)
         body.append("\r\n".data(using: .utf8)!)
         

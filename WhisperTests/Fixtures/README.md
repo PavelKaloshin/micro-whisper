@@ -8,7 +8,7 @@ format `AVAudioFile` can open works (`.wav` / `.m4a`, mono, 16–24 kHz is ideal
 
 | File | Used by | Suggested content |
 |------|---------|-------------------|
-| `hello_en.wav` | `WhisperKitFixtureTests`, `RealtimeIntegrationTests` | ~3–5 s, English, a clear known phrase (e.g. "the quick brown fox jumps over the lazy dog"). |
+| `hello_en.wav` | `WhisperKitFixtureTests`, `RealtimeIntegrationTests`, `OpenAIServiceIntegrationTests` | ~3–5 s, English, a clear known phrase (e.g. "the quick brown fox jumps over the lazy dog"). |
 
 Add more (e.g. `hello_ru.wav`) and a matching test as needed. After recording,
 tighten the assertions in the test to check for the actual spoken words.
@@ -16,16 +16,20 @@ tighten the assertions in the test to check for the actual spoken words.
 ## Running the integration tests
 
 Use `make test-integration` (wraps `scripts/run-integration-tests.sh`). It always
-sets both opt-in flags and runs both layers:
+sets the opt-in flags and runs every layer:
 
 ```bash
 # WhisperKit on-device (downloads the `base` model on first run) — no key needed.
-# Realtime (cloud) too — reads OPENAI_API_KEY from your shell env:
+# Realtime (cloud) and the classic OpenAI REST path (Whisper transcription +
+# chat-completions post-processing) too — read OPENAI_API_KEY from your shell env:
 OPENAI_API_KEY=sk-... make test-integration
 
-# Without a key the WhisperKit layer still passes; the Realtime layer fails
-# (XCTUnwrap on the missing key), so export the key to exercise both.
+# Without a key the WhisperKit layer still passes; the Realtime and OpenAI REST
+# layers skip/fail on the missing key, so export the key to exercise everything.
 ```
+
+Gates: `RUN_WHISPERKIT_TESTS` (on-device, no key), `RUN_REALTIME_TESTS` (cloud
+realtime), `RUN_OPENAI_TESTS` (classic REST: `OpenAIServiceIntegrationTests`).
 
 > Why a wrapper and not `RUN_REALTIME_TESTS=1 … make test`? The macOS XCTest host
 > only reads environment variables declared in the *scheme's* env block — it does

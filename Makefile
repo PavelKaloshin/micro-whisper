@@ -3,7 +3,7 @@
 # disabled, mirroring the CI release workflow (.github/workflows/release.yml).
 
 .DEFAULT_GOAL := build
-.PHONY: build run clean test spm-path test-integration
+.PHONY: build run clean test spm-path test-integration test-openai
 
 PROJECT := Whisper.xcodeproj
 SCHEME := Whisper
@@ -46,6 +46,12 @@ test:
 				CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 test-integration:
 	./scripts/run-integration-tests.sh
+
+# Run only the classic OpenAI REST integration tests (Whisper transcription +
+# chat-completions post-processing) against the hello_en.wav fixture. Reads
+# OPENAI_API_KEY from your shell env; skips cleanly if it's absent.
+test-openai:
+			./scripts/run-integration-tests.sh -only-testing:WhisperTests/OpenAIServiceIntegrationTests
 
 spm-path:
 	@echo $(DERIVED)/SourcePackages/checkouts
